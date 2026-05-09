@@ -42,6 +42,7 @@ def run_tamper_shield_pipeline(
     numeric_columns: Optional[Sequence[str]] = None,
     allow_write: bool = False,
     overwrite: bool = False,
+    write_empty_report: bool = True,
 ) -> Optional[pd.DataFrame]:
     """
     End-to-end tamper comparison pipeline.
@@ -106,6 +107,11 @@ def run_tamper_shield_pipeline(
 
     if diff_report.empty:
         print("[PASS] No significant mismatch found.")
+
+        if write_empty_report:
+            diff_report.to_csv(report_path, index=False, encoding="utf-8-sig")
+            print(f"PASS report saved to: {report_path}")
+
         return diff_report
 
     print("[Step 5] Export report")

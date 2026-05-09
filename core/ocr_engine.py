@@ -9,11 +9,33 @@ class HTMLTableSpanParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.cells: List[Dict[str, Any]] = []
+
         self._row_index = -1
         self._col_index = 0
+
         self._inside_cell = False
         self._current_cell: Optional[Dict[str, Any]] = None
         self._current_text: List[str] = []
+
+        # Occupied positions caused by previous rowspan / colspan.
+        self._occupied: set[tuple[int, int]] = set()
+
+    def _next_available_col(self, row: int, start_col: int) -> int:
+        col = start_col
+        while (row, col) in self._occupied:
+            col += 1
+        return col
+
+    def _mark_occupied(
+        self,
+        row: int,
+        col: int,
+        rowspan: int,
+        colspan: int,
+    ) -> None:
+        for r in range(row, row + rowspan):
+            for c in range(col, col + colspan):
+                self._occupied.add((r, c))
 
     def handle_starttag(self, tag: str, attrs: List[tuple]) -> None:
         attrs_dict = dict(attrs)
@@ -21,13 +43,24 @@ class HTMLTableSpanParser(HTMLParser):
         if tag == "tr":
             self._row_index += 1
             self._col_index = 0
+            self._col_index = self._next_available_col(
+                self._row_index,
+                self._col_index,
+            )
+            return
 
         if tag in {"td", "th"}:
             rowspan = int(attrs_dict.get("rowspan", "1") or "1")
             colspan = int(attrs_dict.get("colspan", "1") or "1")
 
+            self._col_index = self._next_available_col(
+                self._row_index,
+                self._col_index,
+            )
+
             self._inside_cell = True
             self._current_text = []
+
             self._current_cell = {
                 "row": self._row_index,
                 "col": self._col_index,
@@ -36,6 +69,13 @@ class HTMLTableSpanParser(HTMLParser):
                 "tag": tag,
                 "text": "",
             }
+
+            self._mark_occupied(
+                row=self._row_index,
+                col=self._col_index,
+                rowspan=rowspan,
+                colspan=colspan,
+            )
 
     def handle_data(self, data: str) -> None:
         if self._inside_cell:
@@ -47,13 +87,17 @@ class HTMLTableSpanParser(HTMLParser):
             self._current_cell["text"] = text
             self.cells.append(self._current_cell)
 
-            colspan = int(self._current_cell["colspan"])
-            self._col_index += colspan
+            self._col_index = self._current_cell["col"] + int(
+                self._current_cell["colspan"]
+            )
+            self._col_index = self._next_available_col(
+                self._row_index,
+                self._col_index,
+            )
 
             self._inside_cell = False
             self._current_cell = None
             self._current_text = []
-
 
 def build_pp_structure(lang: str = "ch", use_gpu: bool = False) -> PPStructure:
     return PPStructure(show_log=False, lang=lang, use_gpu=use_gpu)
@@ -70,7 +114,13 @@ def parse_html_table_spans(html_content: str) -> List[Dict[str, Any]]:
 
 
 def html_to_dataframes(html_content: str) -> List[pd.DataFrame]:
-    parsed_dfs = pd.read_html(html_content)
+    try:
+        parsed_dfs = pd.read_html(html_content)
+    except ImportError as exc:
+        raise ImportError(
+            "pd.read_html requires an HTML parser dependency such as lxml. "
+            "Please install lxml or add it to requirements.txt after confirmation."
+        ) from exc
 
     result: List[pd.DataFrame] = []
     for df in parsed_dfs:
@@ -79,7 +129,6 @@ def html_to_dataframes(html_content: str) -> List[pd.DataFrame]:
         result.append(df)
 
     return result
-
 
 def extract_tables_with_metadata(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     tables: List[Dict[str, Any]] = []

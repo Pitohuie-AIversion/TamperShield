@@ -516,7 +516,7 @@ def remove_red_seal_from_array(
         )
 
         protected = extract_r_channel_gray(image)
-        binary[black_text_mask > 0] = np.minimum(binary[black_text_mask > 0], protected[black_text_mask > 0])
+        binary[black_text_mask > 0] = 0
 
         return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
 

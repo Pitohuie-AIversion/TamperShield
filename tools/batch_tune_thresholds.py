@@ -25,57 +25,18 @@ def run_tuning(
 ) -> None:
     write_enabled = output_dir is not None
 
+    if not SCAN_DIR.exists():
+        print(f"Scan directory not found: {SCAN_DIR}")
+        return
+
+    if not SCAN_DIR.is_dir():
+        print(f"Scan path is not a directory: {SCAN_DIR}")
+        return
+
     if write_enabled:
         output_dir.mkdir(parents=True, exist_ok=True)
 
     valid_exts = {".jpg", ".jpeg", ".png"}
-
-    print("开始真实扫描件阈值测试")
-    print(f"{'文件名':<30} | {'初始角度':<10} | {'是否写出':<10}")
-    print("-" * 60)
-
-    for file in SCAN_DIR.iterdir():
-        if file.suffix.lower() not in valid_exts:
-            continue
-
-        image = read_image_unicode(file)
-
-        if image is None:
-            print(f"无法读取图像数据: {file.name}")
-            continue
-
-        initial_angle = estimate_skew_angle(image, min_points=100)
-
-        try:
-            if write_enabled:
-                out_path = output_dir / f"tuned_{file.name}"
-
-                if out_path.exists() and not overwrite:
-                    print(f"{file.name:<30} | {initial_angle:>8.3f}° | skipped")
-                    continue
-
-                preprocess_pipeline(
-                    image_path=str(file),
-                    output_path=str(out_path),
-                    mode="gray",
-                    enable_deskew=True,
-                )
-                wrote = True
-
-            else:
-                preprocess_pipeline(
-                    image_path=str(file),
-                    output_path=None,
-                    mode="gray",
-                    enable_deskew=True,
-                )
-                wrote = False
-
-            print(f"{file.name:<30} | {initial_angle:>8.3f}° | {str(wrote):<10}")
-
-        except Exception as exc:
-            print(f"{file.name} 处理崩溃: {exc}")
-
 
 def parse_args():
     parser = argparse.ArgumentParser()

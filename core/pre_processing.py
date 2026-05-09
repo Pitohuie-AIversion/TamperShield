@@ -1,5 +1,6 @@
 import os
-from typing import Optional, Literal, Tuple
+import math
+from typing import Literal, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -39,146 +40,140 @@ def make_odd(value: int, min_value: int = 3) -> int:
     return value
 
 
-def create_red_mask(
+def resize_for_estimation(
     image: np.ndarray,
-    lower_sat: int = 45,
-    lower_val: int = 45,
-    red_threshold: int = 120,
-    red_ratio: float = 1.15,
-    kernel_size: int = 3,
-    open_iterations: int = 1,
-    dilate_iterations: int = 0,
+    max_side: int = 1200,
+) -> Tuple[np.ndarray, float]:
+    h, w = image.shape[:2]
+    long_side = max(h, w)
+
+    if long_side <= max_side:
+        return image.copy(), 1.0
+
+    scale = max_side / long_side
+    new_w = int(round(w * scale))
+    new_h = int(round(h * scale))
+    resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    return resized, scale
+
+
+def extract_r_channel_gray(image: np.ndarray) -> np.ndarray:
+    if image is None or image.size == 0:
+        raise ValueError("Input image is empty.")
+
+    _, _, r = cv2.split(image)
+    return r.copy()
+
+
+def extract_black_text_mask(
+    gray: np.ndarray,
+    min_area: int = 2,
+    max_area_ratio: float = 0.08,
+    open_kernel_size: int = 1,
+    close_kernel_size: int = 2,
 ) -> np.ndarray:
     """
-    Detect red stamp pixels.
+    Extract black stroke protection mask from R-channel grayscale image.
 
-    Important:
-    This mask is only used as an auxiliary mask.
-    Do NOT directly set all masked pixels to white, otherwise black text covered
-    by the stamp may be erased.
+    Foreground logic:
+    - black text is dark in R channel
+    - after inversion, black text becomes bright
+    """
+    if gray is None or gray.size == 0:
+        raise ValueError("Input gray image is empty.")
+
+    inv = 255 - gray
+
+    blur = cv2.GaussianBlur(inv, (3, 3), 0)
+    _, mask = cv2.threshold(
+        blur,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+    )
+
+    if open_kernel_size > 1:
+        k = make_odd(open_kernel_size)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k, k))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+
+    if close_kernel_size > 1:
+        k = make_odd(close_kernel_size)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k, k))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+
+    h, w = gray.shape[:2]
+    max_area = int(h * w * max_area_ratio)
+
+    cleaned = np.zeros_like(mask)
+    for label_id in range(1, num_labels):
+        area = int(stats[label_id, cv2.CC_STAT_AREA])
+        if min_area <= area <= max_area:
+            cleaned[labels == label_id] = 255
+
+    return cleaned
+
+
+def suppress_red_stamp_rgb(
+    image: np.ndarray,
+    red_threshold: int = 135,
+    red_delta: int = 25,
+    lift_alpha: float = 0.45,
+    protect_black: bool = True,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Suppress red stamp using RGB/R-channel logic only.
+
+    No HSV mask is used.
+
+    Strategy:
+    - use R channel as document gray
+    - detect red-dominant non-black pixels by RGB relation
+    - gently lift red-dominant non-black pixels
+    - restore black_text_mask after suppression
     """
     if image is None or image.size == 0:
         raise ValueError("Input image is empty.")
 
     b, g, r = cv2.split(image)
 
-    b_f = b.astype(np.float32)
-    g_f = g.astype(np.float32)
-    r_f = r.astype(np.float32)
-
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-    lower_red_1 = np.array([0, lower_sat, lower_val], dtype=np.uint8)
-    upper_red_1 = np.array([12, 255, 255], dtype=np.uint8)
-
-    lower_red_2 = np.array([168, lower_sat, lower_val], dtype=np.uint8)
-    upper_red_2 = np.array([179, 255, 255], dtype=np.uint8)
-
-    mask_1 = cv2.inRange(hsv, lower_red_1, upper_red_1)
-    mask_2 = cv2.inRange(hsv, lower_red_2, upper_red_2)
-
-    hsv_red = (mask_1 > 0) | (mask_2 > 0)
-
-    red_dominance = (
-        (r > red_threshold)
-        & (r_f > red_ratio * g_f)
-        & (r_f > red_ratio * b_f)
-    )
-
-    mask = (hsv_red & red_dominance).astype(np.uint8) * 255
-
-    if kernel_size > 1:
-        k = make_odd(kernel_size)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
-
-        if open_iterations > 0:
-            mask = cv2.morphologyEx(
-                mask,
-                cv2.MORPH_OPEN,
-                kernel,
-                iterations=open_iterations,
-            )
-
-        if dilate_iterations > 0:
-            mask = cv2.dilate(mask, kernel, iterations=dilate_iterations)
-
-    return mask
-
-
-def create_bright_red_mask(
-    image: np.ndarray,
-    lower_sat: int = 45,
-    lower_val: int = 120,
-    red_threshold: int = 150,
-    red_ratio: float = 1.20,
-) -> np.ndarray:
-    """
-    Detect only bright red stamp pixels.
-
-    This is safer than a general red mask.
-    Dark-red pixels may contain black text covered by the stamp,
-    so they should not be removed aggressively.
-    """
-    return create_red_mask(
-        image=image,
-        lower_sat=lower_sat,
-        lower_val=lower_val,
-        red_threshold=red_threshold,
-        red_ratio=red_ratio,
-        kernel_size=3,
-        open_iterations=1,
-        dilate_iterations=0,
-    )
-
-
-def red_channel_document_gray(
-    image: np.ndarray,
-    lower_sat: int = 45,
-    lower_val: int = 120,
-    red_threshold: int = 150,
-    clean_bright_red: bool = True,
-) -> np.ndarray:
-    """
-    Convert document image to grayscale while suppressing red stamps.
-
-    Core idea:
-    - Use R channel as grayscale base.
-    - Red stamp becomes naturally bright in R channel.
-    - Black text remains dark in R channel.
-    - Only very bright red stamp pixels are forced to white.
-
-    This avoids the main problem of HSV white-out:
-    black text under the red stamp is better preserved.
-    """
-    if image is None or image.size == 0:
-        raise ValueError("Input image is empty.")
-
-    _, _, r = cv2.split(image)
     gray = r.copy()
+    protected_gray = gray.copy()
 
-    if clean_bright_red:
-        bright_red_mask = create_bright_red_mask(
-            image=image,
-            lower_sat=lower_sat,
-            lower_val=lower_val,
-            red_threshold=red_threshold,
-            red_ratio=1.20,
-        )
+    black_text_mask = extract_black_text_mask(gray)
 
-        # Only clean bright red stamp pixels.
-        # Do not clean all red pixels, otherwise text under seal may disappear.
-        gray[bright_red_mask > 0] = 255
+    b_i = b.astype(np.int16)
+    g_i = g.astype(np.int16)
+    r_i = r.astype(np.int16)
 
-    return gray
+    max_gb = np.maximum(g_i, b_i)
+    red_dominance = (r_i - max_gb) >= red_delta
+    red_bright_enough = r_i >= red_threshold
+
+    not_black_text = black_text_mask == 0
+
+    red_candidate = red_dominance & red_bright_enough & not_black_text
+
+    processed = gray.astype(np.float32)
+
+    lifted = processed * (1.0 - lift_alpha) + 255.0 * lift_alpha
+    processed[red_candidate] = np.maximum(processed[red_candidate], lifted[red_candidate])
+
+    processed = np.clip(processed, 0, 255).astype(np.uint8)
+
+    if protect_black:
+        processed[black_text_mask > 0] = protected_gray[black_text_mask > 0]
+
+    return processed, black_text_mask
 
 
 def normalize_illumination(
     gray: np.ndarray,
     background_kernel_size: int = 35,
 ) -> np.ndarray:
-    """
-    Reduce uneven lighting and background shadow.
-    """
     k = make_odd(background_kernel_size, min_value=15)
 
     background = cv2.GaussianBlur(gray, (k, k), 0)
@@ -190,23 +185,21 @@ def normalize_illumination(
 
 def enhance_gray_document(
     gray: np.ndarray,
+    black_text_mask: Optional[np.ndarray] = None,
     clahe_clip_limit: float = 1.8,
     clahe_tile_grid_size: Tuple[int, int] = (8, 8),
-    gamma: float = 0.90,
+    gamma: float = 0.95,
     sharpen: bool = False,
 ) -> np.ndarray:
-    """
-    Enhance grayscale document.
+    protected_gray = gray.copy()
 
-    Settings are conservative to avoid sticky text.
-    """
-    gray = normalize_illumination(gray, background_kernel_size=35)
+    enhanced = normalize_illumination(gray, background_kernel_size=35)
 
     clahe = cv2.createCLAHE(
         clipLimit=clahe_clip_limit,
         tileGridSize=clahe_tile_grid_size,
     )
-    enhanced = clahe.apply(gray)
+    enhanced = clahe.apply(enhanced)
 
     if gamma != 1.0:
         table = np.array(
@@ -219,6 +212,9 @@ def enhance_gray_document(
         blur = cv2.GaussianBlur(enhanced, (0, 0), sigmaX=1.0)
         enhanced = cv2.addWeighted(enhanced, 1.10, blur, -0.10, 0)
 
+    if black_text_mask is not None:
+        enhanced[black_text_mask > 0] = protected_gray[black_text_mask > 0]
+
     return enhanced
 
 
@@ -228,11 +224,6 @@ def adaptive_binarize(
     c_value: int = 18,
     thin_text: bool = True,
 ) -> np.ndarray:
-    """
-    Adaptive binarization.
-
-    Larger c_value gives thinner black strokes.
-    """
     block_size = make_odd(block_size, min_value=15)
 
     binary = cv2.adaptiveThreshold(
@@ -253,22 +244,132 @@ def adaptive_binarize(
     return binary
 
 
-def resize_for_estimation(
+def binarize_for_skew(gray: np.ndarray) -> np.ndarray:
+    black_text_mask = extract_black_text_mask(gray)
+    return black_text_mask
+
+
+def estimate_skew_angle_hough(
     image: np.ndarray,
-    max_side: int = 1200,
-) -> Tuple[np.ndarray, float]:
-    h, w = image.shape[:2]
-    long_side = max(h, w)
+    min_points: int = 100,
+    max_angle: float = 15.0,
+) -> Optional[float]:
+    small, _ = resize_for_estimation(image, max_side=1200)
+    gray = extract_r_channel_gray(small)
 
-    if long_side <= max_side:
-        return image.copy(), 1.0
+    binary = binarize_for_skew(gray)
 
-    scale = max_side / long_side
-    new_w = int(round(w * scale))
-    new_h = int(round(h * scale))
+    if int(np.count_nonzero(binary)) < min_points:
+        return None
 
-    resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
-    return resized, scale
+    edges = cv2.Canny(binary, 50, 150, apertureSize=3)
+
+    h, w = edges.shape[:2]
+    min_line_length = max(40, int(w * 0.18))
+
+    lines = cv2.HoughLinesP(
+        edges,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=80,
+        minLineLength=min_line_length,
+        maxLineGap=20,
+    )
+
+    if lines is None:
+        return None
+
+    angles = []
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        dx = x2 - x1
+        dy = y2 - y1
+
+        if dx == 0 and dy == 0:
+            continue
+
+        angle = math.degrees(math.atan2(dy, dx))
+
+        if -max_angle <= angle <= max_angle:
+            angles.append(angle)
+
+    if not angles:
+        return None
+
+    median_angle = float(np.median(angles))
+
+    if abs(median_angle) < 0.15:
+        return 0.0
+
+    return median_angle
+
+
+def estimate_skew_angle_min_area_rect(
+    image: np.ndarray,
+    min_points: int = 100,
+    max_angle: float = 15.0,
+) -> Optional[float]:
+    small, _ = resize_for_estimation(image, max_side=1200)
+    gray = extract_r_channel_gray(small)
+
+    binary = binarize_for_skew(gray)
+    ys, xs = np.where(binary > 0)
+
+    if len(xs) < min_points:
+        return None
+
+    points = np.column_stack((xs, ys)).astype(np.float32)
+    rect = cv2.minAreaRect(points)
+
+    raw_angle = float(rect[-1])
+
+    if raw_angle < -45:
+        correction_angle = -(90 + raw_angle)
+    else:
+        correction_angle = -raw_angle
+
+    if abs(correction_angle) > max_angle:
+        return None
+
+    if abs(correction_angle) < 0.15:
+        return 0.0
+
+    return float(correction_angle)
+
+
+def estimate_skew_angle(
+    image: np.ndarray,
+    min_points: int = 100,
+) -> float:
+    """
+    Estimate correction angle.
+
+    Priority:
+    1. HoughLinesP
+    2. cv2.minAreaRect fallback
+    """
+    if image is None or image.size == 0:
+        raise ValueError("Input image is empty.")
+
+    hough_angle = estimate_skew_angle_hough(
+        image,
+        min_points=min_points,
+        max_angle=15.0,
+    )
+
+    if hough_angle is not None:
+        return hough_angle
+
+    rect_angle = estimate_skew_angle_min_area_rect(
+        image,
+        min_points=min_points,
+        max_angle=15.0,
+    )
+
+    if rect_angle is not None:
+        return rect_angle
+
+    return 0.0
 
 
 def rotate_keep_size(
@@ -300,9 +401,6 @@ def rotate_bound(
     border_value,
     interpolation=cv2.INTER_LINEAR,
 ) -> np.ndarray:
-    """
-    Rotate image without cropping.
-    """
     h, w = image.shape[:2]
     center = (w / 2.0, h / 2.0)
 
@@ -327,84 +425,6 @@ def rotate_bound(
     )
 
     return rotated
-
-
-def binarize_for_skew(gray: np.ndarray) -> np.ndarray:
-    blur = cv2.GaussianBlur(gray, (3, 3), 0)
-
-    _, binary_inv = cv2.threshold(
-        blur,
-        0,
-        255,
-        cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU,
-    )
-
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    binary_inv = cv2.morphologyEx(binary_inv, cv2.MORPH_OPEN, kernel, iterations=1)
-
-    return binary_inv
-
-
-def estimate_skew_angle(
-    image: np.ndarray,
-    min_points: int = 100,
-) -> float:
-    """
-    Estimate correction angle using horizontal projection.
-
-    The returned angle can be directly used for rotation.
-    """
-    if image is None or image.size == 0:
-        raise ValueError("Input image is empty.")
-
-    small, _ = resize_for_estimation(image, max_side=1200)
-
-    gray = red_channel_document_gray(
-        small,
-        lower_sat=45,
-        lower_val=120,
-        red_threshold=150,
-        clean_bright_red=True,
-    )
-
-    binary_inv = binarize_for_skew(gray)
-
-    foreground_count = int(np.count_nonzero(binary_inv))
-    if foreground_count < min_points:
-        return 0.0
-
-    max_angle = 10.0
-    angle_step = 0.25
-
-    angles = np.arange(-max_angle, max_angle + angle_step * 0.5, angle_step)
-
-    best_angle = 0.0
-    best_score = -1.0
-
-    for angle in angles:
-        rotated = rotate_keep_size(
-            binary_inv,
-            angle,
-            border_value=0,
-            interpolation=cv2.INTER_NEAREST,
-        )
-
-        row_sum = np.sum(rotated > 0, axis=1).astype(np.float32)
-        nonzero_rows = row_sum[row_sum > 0]
-
-        if nonzero_rows.size < 5:
-            continue
-
-        score = float(np.var(nonzero_rows))
-
-        if score > best_score:
-            best_score = score
-            best_angle = float(angle)
-
-    if abs(best_angle) < 0.15:
-        return 0.0
-
-    return best_angle
 
 
 def deskew_image(
@@ -446,34 +466,38 @@ def remove_red_seal_from_array(
     mode: OutputMode = "gray",
     lower_sat: int = 45,
     lower_val: int = 120,
-    red_threshold: int = 150,
-    gamma: float = 0.90,
+    red_threshold: int = 135,
+    gamma: float = 0.95,
     binary_block_size: int = 41,
     binary_c_value: int = 18,
     thin_text: bool = True,
     clean_bright_red: bool = True,
+    red_delta: int = 25,
+    lift_alpha: float = 0.45,
 ) -> np.ndarray:
     """
-    Remove red seal using red-channel separation.
+    Red seal suppression based on RGB/R-channel separation.
 
-    mode:
-    - gray: recommended for visual inspection and OCR
-    - binary: stronger OCR-style output
-    - color: red-removed grayscale image in BGR format
+    lower_sat and lower_val are kept only for backward compatibility.
+    No HSV operation is used.
     """
+    _ = lower_sat
+    _ = lower_val
+
     if image is None or image.size == 0:
         raise ValueError("Input image is empty.")
 
-    gray = red_channel_document_gray(
+    gray, black_text_mask = suppress_red_stamp_rgb(
         image,
-        lower_sat=lower_sat,
-        lower_val=lower_val,
         red_threshold=red_threshold,
-        clean_bright_red=clean_bright_red,
+        red_delta=red_delta,
+        lift_alpha=lift_alpha,
+        protect_black=clean_bright_red,
     )
 
     enhanced = enhance_gray_document(
         gray,
+        black_text_mask=black_text_mask,
         clahe_clip_limit=1.8,
         clahe_tile_grid_size=(8, 8),
         gamma=gamma,
@@ -490,6 +514,10 @@ def remove_red_seal_from_array(
             c_value=binary_c_value,
             thin_text=thin_text,
         )
+
+        protected = extract_r_channel_gray(image)
+        binary[black_text_mask > 0] = np.minimum(binary[black_text_mask > 0], protected[black_text_mask > 0])
+
         return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
 
     if mode == "color":
@@ -506,8 +534,8 @@ def preprocess_pipeline(
     expand_after_rotation: bool = True,
     lower_sat: int = 45,
     lower_val: int = 120,
-    red_threshold: int = 150,
-    gamma: float = 0.90,
+    red_threshold: int = 135,
+    gamma: float = 0.95,
     binary_block_size: int = 41,
     binary_c_value: int = 18,
     thin_text: bool = True,
@@ -515,14 +543,27 @@ def preprocess_pipeline(
     close_kernel_size: int = 2,
     close_iterations: int = 1,
     dilate_iterations: int = 0,
+    red_delta: int = 25,
+    lift_alpha: float = 0.45,
     **kwargs,
 ) -> np.ndarray:
     """
     Full preprocessing pipeline.
 
-    close_kernel_size, close_iterations, and dilate_iterations are kept only for
-    backward compatibility with old scripts.
+    Compatibility parameters:
+    - lower_sat
+    - lower_val
+    - close_kernel_size
+    - close_iterations
+    - dilate_iterations
+
+    These are kept to avoid breaking existing tools.
     """
+    _ = close_kernel_size
+    _ = close_iterations
+    _ = dilate_iterations
+    _ = kwargs
+
     image = imread_unicode(image_path)
 
     if enable_deskew:
@@ -543,6 +584,8 @@ def preprocess_pipeline(
         binary_c_value=binary_c_value,
         thin_text=thin_text,
         clean_bright_red=clean_bright_red,
+        red_delta=red_delta,
+        lift_alpha=lift_alpha,
     )
 
     if output_path:
@@ -558,12 +601,13 @@ def remove_red_seal(
     lower_val: int = 120,
     dilate_iterations: int = 0,
     mode: OutputMode = "gray",
-    red_threshold: int = 150,
+    red_threshold: int = 135,
 ) -> np.ndarray:
     """
     Backward-compatible entrypoint.
 
-    This replaces the old HSV white-out method.
+    Internally uses RGB/R-channel red seal suppression.
+    No HSV white-out is used.
     """
     return preprocess_pipeline(
         image_path=image_path,
@@ -573,35 +617,4 @@ def remove_red_seal(
         lower_val=lower_val,
         red_threshold=red_threshold,
         dilate_iterations=dilate_iterations,
-    )
-
-
-if __name__ == "__main__":
-    input_path = r"input.jpg"
-
-    preprocess_pipeline(
-    image_path=r"your_input.jpg",
-    output_path=r"your_output_gray.png",
-    mode="gray",
-    enable_deskew=True,
-    red_threshold=135,
-    lower_sat=35,
-    lower_val=80,
-    gamma=1.05,
-    clean_bright_red=True,
-)
-
-    preprocess_pipeline(
-        image_path=input_path,
-        output_path=r"output_binary.png",
-        mode="binary",
-        enable_deskew=True,
-        red_threshold=150,
-        lower_sat=45,
-        lower_val=120,
-        gamma=0.90,
-        binary_block_size=41,
-        binary_c_value=18,
-        thin_text=True,
-        clean_bright_red=True,
     )

@@ -1,42 +1,122 @@
-from typing import Any, Dict, List
+from html.parser import HTMLParser
+from typing import Any, Dict, List, Optional
 
-from paddleocr import PPStructure
 import pandas as pd
-from bs4 import BeautifulSoup
+from paddleocr import PPStructure
+
+
+class HTMLTableSpanParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.cells: List[Dict[str, Any]] = []
+        self._row_index = -1
+        self._col_index = 0
+        self._inside_cell = False
+        self._current_cell: Optional[Dict[str, Any]] = None
+        self._current_text: List[str] = []
+
+    def handle_starttag(self, tag: str, attrs: List[tuple]) -> None:
+        attrs_dict = dict(attrs)
+
+        if tag == "tr":
+            self._row_index += 1
+            self._col_index = 0
+
+        if tag in {"td", "th"}:
+            rowspan = int(attrs_dict.get("rowspan", "1") or "1")
+            colspan = int(attrs_dict.get("colspan", "1") or "1")
+
+            self._inside_cell = True
+            self._current_text = []
+            self._current_cell = {
+                "row": self._row_index,
+                "col": self._col_index,
+                "rowspan": rowspan,
+                "colspan": colspan,
+                "tag": tag,
+                "text": "",
+            }
+
+    def handle_data(self, data: str) -> None:
+        if self._inside_cell:
+            self._current_text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"td", "th"} and self._current_cell is not None:
+            text = " ".join(" ".join(self._current_text).split())
+            self._current_cell["text"] = text
+            self.cells.append(self._current_cell)
+
+            colspan = int(self._current_cell["colspan"])
+            self._col_index += colspan
+
+            self._inside_cell = False
+            self._current_cell = None
+            self._current_text = []
 
 
 def build_pp_structure(lang: str = "ch", use_gpu: bool = False) -> PPStructure:
-    """
-    Create PP-Structure engine for layout and table parsing.
-    """
     return PPStructure(show_log=False, lang=lang, use_gpu=use_gpu)
 
 
 def parse_layout_to_blocks(engine: PPStructure, image_path: str) -> List[Dict[str, Any]]:
-    """
-    Parse scanned page into PP-Structure blocks.
-    """
     return engine(image_path)
 
 
+def parse_html_table_spans(html_content: str) -> List[Dict[str, Any]]:
+    parser = HTMLTableSpanParser()
+    parser.feed(html_content)
+    return parser.cells
+
+
+def html_to_dataframes(html_content: str) -> List[pd.DataFrame]:
+    parsed_dfs = pd.read_html(html_content)
+
+    result: List[pd.DataFrame] = []
+    for df in parsed_dfs:
+        df = df.fillna("").astype(str)
+        df.columns = [str(col).strip() for col in df.columns]
+        result.append(df)
+
+    return result
+
+
+def extract_tables_with_metadata(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    tables: List[Dict[str, Any]] = []
+
+    for block_index, block in enumerate(blocks):
+        if block.get("type") != "table":
+            continue
+
+        res = block.get("res", {})
+        html_content = res.get("html", "")
+
+        if not html_content:
+            continue
+
+        try:
+            dataframes = html_to_dataframes(html_content)
+            spans = parse_html_table_spans(html_content)
+
+            for table_index, df in enumerate(dataframes):
+                tables.append(
+                    {
+                        "df": df,
+                        "html": html_content,
+                        "spans": spans,
+                        "block_index": block_index,
+                        "table_index": table_index,
+                        "bbox": block.get("bbox", None),
+                        "raw_block": block,
+                    }
+                )
+
+        except Exception as exc:
+            print(f"[Warning] Failed to parse PP-Structure HTML table: {exc}")
+
+    return tables
+
+
 def extract_tables_to_dataframes(blocks: List[Dict[str, Any]]) -> List[pd.DataFrame]:
-    """
-    遍历 PP-Structure 的输出区块，提取类型为 'table' 的块，
-    并将其 HTML 解析为 Pandas DataFrame。
-    """
-    dfs = []
-    for block in blocks:
-        if block.get('type') == 'table' and 'res' in block and 'html' in block['res']:
-            html_content = block['res']['html']
-            try:
-                # 使用 pandas 直接解析 HTML 表格
-                parsed_dfs = pd.read_html(html_content)
-                if parsed_dfs:
-                    # 获取第一张表（通常一个块只有一个 HTML 表）
-                    df = parsed_dfs[0]
-                    # 清理表头和空值，统一为字符串以便比对
-                    df = df.fillna("").astype(str)
-                    dfs.append(df)
-            except Exception as e:
-                print(f"[Warning] Failed to parse HTML table: {e}")
-    return dfs
+    tables = extract_tables_with_metadata(blocks)
+    return [item["df"] for item in tables]

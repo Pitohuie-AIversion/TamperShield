@@ -264,7 +264,7 @@ def estimate_skew_angle_hough(
 
     edges = cv2.Canny(binary, 50, 150, apertureSize=3)
 
-    h, w = edges.shape[:2]
+    _, w = edges.shape[:2]
     min_line_length = max(40, int(w * 0.18))
 
     lines = cv2.HoughLinesP(
@@ -515,8 +515,8 @@ def remove_red_seal_from_array(
             thin_text=thin_text,
         )
 
-        protected = extract_r_channel_gray(image)
-        binary[black_text_mask > 0] = np.minimum(binary[black_text_mask > 0], protected[black_text_mask > 0])
+        # Keep binary output strictly binary while protecting black strokes.
+        binary[black_text_mask > 0] = 0
 
         return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
 

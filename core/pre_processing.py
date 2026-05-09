@@ -507,8 +507,8 @@ def remove_red_seal_from_array(
     if mode == "gray":
         return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
 
-        if mode == "binary":
-         binary = adaptive_binarize(
+    if mode == "binary":
+        binary = adaptive_binarize(
             enhanced,
             block_size=binary_block_size,
             c_value=binary_c_value,
@@ -519,6 +519,14 @@ def remove_red_seal_from_array(
         binary[black_text_mask > 0] = 0
 
         return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+
+    if mode == "color":
+        return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
+
+    raise ValueError(f"Unsupported mode: {mode}")
+
+
+
 
 
 def preprocess_pipeline(

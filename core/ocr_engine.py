@@ -156,7 +156,25 @@ def build_pp_structure(lang: str = "ch", use_gpu: bool = False):
 
 
 def parse_layout_to_blocks(engine, image_path: str) -> List[Dict[str, Any]]:
-    return engine(image_path)
+    """
+    Run structure parser.
+
+    Supports both old callable PPStructure and newer PPStructureV3-style engines.
+    """
+    if callable(engine):
+        result = engine(image_path)
+    elif hasattr(engine, "predict"):
+        result = engine.predict(image_path)
+    else:
+        raise TypeError(
+            "Unsupported PaddleOCR structure engine. "
+            "Expected callable engine or engine with .predict()."
+        )
+
+    if result is None:
+        return []
+
+    return list(result)
 
 def parse_html_table_spans(html_content: str) -> List[Dict[str, Any]]:
     parser = HTMLTableSpanParser()

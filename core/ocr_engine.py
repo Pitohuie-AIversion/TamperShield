@@ -146,13 +146,25 @@ def build_pp_structure(lang: str = "ch", use_gpu: bool = False):
     """
     pp_structure_cls = _load_pp_structure_class()
 
-    try:
-        return pp_structure_cls(show_log=False, lang=lang, use_gpu=use_gpu)
-    except TypeError:
+    init_candidates = [
+        {"show_log": False, "lang": lang, "use_gpu": use_gpu},
+        {"show_log": False, "lang": lang},
+        {"lang": lang, "use_gpu": use_gpu},
+        {"lang": lang},
+        {},
+    ]
+
+    last_exc: Exception | None = None
+    for kwargs in init_candidates:
         try:
-            return pp_structure_cls(lang=lang, use_gpu=use_gpu)
-        except TypeError:
-            return pp_structure_cls()
+            return pp_structure_cls(**kwargs)
+        except (TypeError, ValueError) as exc:
+            last_exc = exc
+            continue
+
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("Failed to initialize PPStructure engine.")
 
 
 def parse_layout_to_blocks(engine, image_path: str) -> List[Dict[str, Any]]:

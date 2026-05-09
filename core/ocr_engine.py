@@ -2,7 +2,8 @@ from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from paddleocr import PPStructure
+import importlib
+
 
 
 class HTMLTableSpanParser(HTMLParser):
@@ -100,13 +101,62 @@ class HTMLTableSpanParser(HTMLParser):
             self._current_text = []
 
 
-def build_pp_structure(lang: str = "ch", use_gpu: bool = False) -> PPStructure:
-    return PPStructure(show_log=False, lang=lang, use_gpu=use_gpu)
+def _load_pp_structure_class():
+    """
+    Load PP-Structure class from different PaddleOCR versions.
+
+    PaddleOCR 2.x commonly exposes:
+        from paddleocr import PPStructure
+
+    Some environments may not expose PPStructure at top level.
+    This function avoids failing when importing core.ocr_engine.
+    """
+    candidates = [
+        ("paddleocr", "PPStructure"),
+        ("paddleocr", "PPStructureV3"),
+        ("paddleocr.ppstructure", "PPStructure"),
+        ("paddleocr.ppstructure.predict_system", "PPStructure"),
+    ]
+
+    errors = []
+
+    for module_name, class_name in candidates:
+        try:
+            module = importlib.import_module(module_name)
+            cls = getattr(module, class_name)
+            return cls
+        except Exception as exc:
+            errors.append(f"{module_name}.{class_name}: {exc}")
+
+    raise ImportError(
+        "Cannot locate PPStructure in the installed paddleocr package. "
+        "Please check your PaddleOCR version. Run:\n"
+        "python -c \"import paddleocr; print(paddleocr.__file__); print(dir(paddleocr))\"\n"
+        "pip show paddleocr\n\n"
+        "Tried:\n" + "\n".join(errors)
+    )
 
 
-def parse_layout_to_blocks(engine: PPStructure, image_path: str) -> List[Dict[str, Any]]:
+def build_pp_structure(lang: str = "ch", use_gpu: bool = False):
+    """
+    Create PP-Structure engine lazily.
+
+    This keeps `from core.ocr_engine import HTMLTableSpanParser, build_pp_structure`
+    importable even when PaddleOCR API differs across versions.
+    """
+    pp_structure_cls = _load_pp_structure_class()
+
+    try:
+        return pp_structure_cls(show_log=False, lang=lang, use_gpu=use_gpu)
+    except TypeError:
+        try:
+            return pp_structure_cls(lang=lang, use_gpu=use_gpu)
+        except TypeError:
+            return pp_structure_cls()
+
+
+def parse_layout_to_blocks(engine, image_path: str) -> List[Dict[str, Any]]:
     return engine(image_path)
-
 
 def parse_html_table_spans(html_content: str) -> List[Dict[str, Any]]:
     parser = HTMLTableSpanParser()

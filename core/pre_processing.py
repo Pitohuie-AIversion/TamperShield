@@ -507,27 +507,18 @@ def remove_red_seal_from_array(
     if mode == "gray":
         return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
 
-    if mode == "binary":
-        binary = adaptive_binarize(
+        if mode == "binary":
+         binary = adaptive_binarize(
             enhanced,
             block_size=binary_block_size,
             c_value=binary_c_value,
             thin_text=thin_text,
         )
 
-<<<<<<< HEAD
-        protected = extract_r_channel_gray(image)
-=======
         # Keep binary output strictly binary while protecting black strokes.
->>>>>>> 7fdf9eb1729e0c4e142a1778471f4a1ca6a55d1a
         binary[black_text_mask > 0] = 0
 
         return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
-
-    if mode == "color":
-        return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
-
-    raise ValueError(f"Unsupported mode: {mode}")
 
 
 def preprocess_pipeline(

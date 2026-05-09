@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": "X:\\Users\\Pitoyoung\\anaconda3\\envs\\tamper_shield\\python.exe",
+  "python.analysis.extraPaths": [
+    "."
+  ],
+  "python.terminal.activateEnvironment": true
+}

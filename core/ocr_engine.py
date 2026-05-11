@@ -1,4 +1,5 @@
 from html.parser import HTMLParser
+from io import StringIO
 from typing import Any, Dict, List, Optional
 
 import importlib
@@ -199,7 +200,7 @@ def parse_html_table_spans(html_content: str) -> List[Dict[str, Any]]:
 
 def html_to_dataframes(html_content: str) -> List[pd.DataFrame]:
     try:
-        parsed_dfs = pd.read_html(html_content)
+        parsed_dfs = pd.read_html(StringIO(html_content))
     except ImportError as exc:
         raise ImportError(
             "pd.read_html requires an HTML parser dependency such as lxml. "

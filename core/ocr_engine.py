@@ -188,6 +188,20 @@ def parse_layout_to_blocks(engine, image_path: str) -> List[Dict[str, Any]]:
 
     return list(result)
 
+
+def inspect_structure_output(blocks, max_items: int = 3):
+    print("blocks type:", type(blocks))
+    print("blocks len:", len(blocks))
+    for i, block in enumerate(blocks[:max_items]):
+        print(f"[{i}] type:", type(block))
+        if isinstance(block, dict):
+            print("keys:", block.keys())
+            print(block)
+        else:
+            print("attrs:", [x for x in dir(block) if not x.startswith("_")][:50])
+            print(block)
+
+
 def parse_html_table_spans(html_content: str) -> List[Dict[str, Any]]:
     parser = HTMLTableSpanParser()
     parser.feed(html_content)

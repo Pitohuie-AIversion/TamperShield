@@ -13,14 +13,12 @@
 - [x] PaddleOCR 3.x 组合测试完成：`paddle==3.2.2`、`paddleocr==3.5.0`、`paddlex==3.5.1`
 - [x] `PPStructureV3.predict()` 真实图片测试成功
 - [x] `extract_tables_with_metadata()` 已支持 `LayoutParsingResultV2 → table_res_list → pred_html → DataFrame`
-- [x] `extract_tables_with_metadata()` 保留旧版 PPStructure dict 兼容层
 - [x] 原生 DOCX/PDF 表格提取已支持
 - [x] `normalize_dataframe()` 已支持 `promote_first_row_to_header=True`
 - [x] 扫描件 DataFrame 已可通过首行提升得到 `序号`、`分项`、`澄清项`、`回复`
 - [x] 新增 `core/table_matcher.py`
 - [x] 新增 `rank_base_table_candidates()`
 - [x] 新增 `rank_native_table_candidates()`
-- [x] 表级匹配评分包含 `column_score`、`text_score`、`shape_score`、`key_overlap_score`
 - [x] 表级匹配决策包含 `auto_match`、`needs_review`、`no_match`
 - [x] 明确当前阶段不实现 RAG
 - [x] Phase 1：完成 Document-first 项目规则与架构调整
@@ -68,10 +66,28 @@
 - [x] `run_document_first_pipeline(...)` 默认返回 `EvidenceIndex`
 - [x] `run_document_first_pipeline(...)` 不写文件、不生成报告、不调用 `ensure_write_allowed()`
 - [x] 旧 table-first pipeline 与新 Document-first pipeline 已可并存
+- [x] Phase 9a：新增 `core/report_generator.py`
+- [x] 实现 `make_json_safe(...)`
+- [x] 实现 `evidence_index_to_summary_dict(...)`
+- [x] 实现 `evidence_record_to_dict(...)`
+- [x] 实现 `evidence_records_to_page_dict(...)`
+- [x] 实现 `generate_markdown_report(...)`
+- [x] 实现 `write_text_report(...)`
+- [x] 实现 `generate_report_bundle(...)`
+- [x] 报告生成模块只消费 `EvidenceIndex`
+- [x] 报告生成模块不重新执行解析、对齐、内容比对、表格精查、OCR 或 LLM
+- [x] `write_text_report(...)` 默认阻断写入，只有 `allow_write=True` 才写文件
+- [x] Phase 9b：`main.py::run_document_first_pipeline(...)` 可选接入报告导出
+- [x] `run_document_first_pipeline(...)` 新增 `report_output_path`
+- [x] `run_document_first_pipeline(...)` 新增 `allow_write`
+- [x] `run_document_first_pipeline(...)` 新增 `overwrite`
+- [x] `report_output_path is None` 时仍只返回 `EvidenceIndex`，不写文件
+- [x] `report_output_path` 非空时生成 Markdown 报告
+- [x] 报告写入仍由 `write_text_report(...)` 执行权限控制
 
 ## Current Focus
 
-当前阶段已完成 Document-first pipeline 与 `main.py` 的可选接入。
+当前阶段已完成 Document-first pipeline、`main.py` 可选接入，以及基于 `EvidenceIndex` 的 Markdown 报告导出能力。
 
 当前已完成主线：
 
@@ -80,53 +96,49 @@ candidate document
         vs
 baseline document
         ↓
-core/document_pipeline.py
-        ↓
 main.py::run_document_first_pipeline(...)
         ↓
 EvidenceIndex
+        ↓
+core/report_generator.py
+        ↓
+optional Markdown report
 ```
 
 当前重点进入：
 
 ```text
-Phase 9：报告导出
+Phase 10：真实文档验证
 ```
 
-Phase 9 的目标是新增报告导出能力，但报告必须以 `EvidenceIndex` 为输入，不能重新执行解析、对齐、比对或表格精查。
+Phase 10 的目标是使用真实 candidate document 和 baseline document 验证端到端流程，包括解析、页面对齐、内容差异、表格精查触发、证据索引和可选报告导出。
 
-注意：旧的 `main.py::run_tamper_shield_pipeline(...)` 仍然保留，不得删除。
+注意：Phase 10 是验证阶段，不应优先重构核心架构。
 
 ## Next
 
-### Phase 9：报告导出
-
-- [ ] 新增报告导出模块，例如 `core/report_generator.py`
-- [ ] 报告输入必须是 `EvidenceIndex`
-- [ ] 报告生成模块不得重新调用 `document_parser`
-- [ ] 报告生成模块不得重新调用 `page_aligner`
-- [ ] 报告生成模块不得重新调用 `content_compare`
-- [ ] 报告生成模块不得重新调用 `table_compare`
-- [ ] 报告应按页码组织
-- [ ] 每页下按元素类型组织差异
-- [ ] 表格单元格差异作为页面差异的子项
-- [ ] 报告必须保留证据定位信息
-- [ ] 报告导出必须显式传入输出路径
-- [ ] 写文件必须要求 `allow_write=True`
-- [ ] 不得默认生成保存路径
-- [ ] 不得覆盖已有文件，除非 `overwrite=True`
-
 ### Phase 10：真实文档验证
 
-- [ ] 使用一组真实 candidate document 和 baseline document 做端到端测试
+- [ ] 准备一组真实 candidate document 和 baseline document
 - [ ] 验证 `run_document_first_pipeline(...)`
+- [ ] 验证默认不写文件行为
+- [ ] 验证 `report_output_path=None` 时只返回 `EvidenceIndex`
+- [ ] 验证 `report_output_path` 非空但 `allow_write=False` 时阻断写入
+- [ ] 验证 `report_output_path` 非空且 `allow_write=True` 时写出 Markdown 报告
 - [ ] 验证 PDF 文本页解析
 - [ ] 验证 DOCX 近似单页解析
 - [ ] 验证 `page_aligner` 对新增页、缺页、错页的表现
 - [ ] 验证 `content_compare` 的文本差异和元素差异输出
 - [ ] 验证 `table_compare` 在 DataFrame payload 可用和不可用场景下的表现
 - [ ] 验证 `EvidenceIndex` summary、filter 和 group by page
-- [ ] 验证 Phase 9 报告导出结果
+- [ ] 验证 Markdown 报告是否按页面和证据类别组织
+- [ ] 记录 Phase 10 验证中发现的问题，后续再进入 targeted fix
+
+### Phase 11：真实问题修复与增强
+
+- [ ] 根据 Phase 10 验证结果修复 parser / aligner / compare / report 的具体问题
+- [ ] 优先修复阻断端到端流程的问题
+- [ ] 不做大规模重构，除非 Phase 10 证明当前架构无法支撑真实数据
 
 ## Test Commands
 
@@ -147,17 +159,35 @@ python -c "from core.evidence_index import build_evidence_index, EvidenceIndex; 
 
 python -c "from core.document_pipeline import compare_documents, compare_parsed_documents, collect_document_differences; print('document_pipeline import ok')"
 
+python -c "from core.report_generator import generate_markdown_report, write_text_report, generate_report_bundle; print('report_generator import ok')"
+
 python -c "from main import run_tamper_shield_pipeline, run_document_first_pipeline; print('main pipeline imports ok')"
 
 python -c "import inspect; from main import run_document_first_pipeline; print(inspect.signature(run_document_first_pipeline))"
-
-python -c "from main import run_tamper_shield_pipeline; print(run_tamper_shield_pipeline.__name__)"
 ```
 
-内存 pipeline 测试：
+签名应包含：
+
+```text
+report_output_path
+allow_write
+overwrite
+```
+
+写入阻断测试：
 
 ```powershell
-python -c "from core.document_models import ParsedDocument, DocumentPage; from core.document_pipeline import compare_parsed_documents; c=ParsedDocument(file_path='candidate.docx', file_type='docx', pages=[DocumentPage(page_number=1, plain_text='工程合同 金额 100')]); b=ParsedDocument(file_path='baseline.docx', file_type='docx', pages=[DocumentPage(page_number=1, plain_text='工程合同 金额 200')]); idx=compare_parsed_documents(c,b); print(idx.summary())"
+python -c "from core.report_generator import write_text_report; import tempfile; from pathlib import Path; p=Path(tempfile.gettempdir())/'tamper_report_test.md';\
+try:\
+    write_text_report('test', p, allow_write=False)\
+except PermissionError as e:\
+    print(str(e))"
+```
+
+预期：
+
+```text
+[Output Blocked] - Permission Required
 ```
 
 检查 Git 冲突标记：
@@ -166,7 +196,7 @@ python -c "from core.document_models import ParsedDocument, DocumentPage; from c
 Select-String -Path core/*.py,tools/*.py -Pattern "<<<<<<<|=======|>>>>>>>"
 ```
 
-## Legacy Table-first / Table Submodule Test Commands
+### Legacy Table-first / Table Submodule Test Commands
 
 以下命令用于兼容旧 OCR / DataFrame / 表格子模块流程。它们不是新的文档级主流程。
 
@@ -180,51 +210,9 @@ python -c "from core.text_parser import extract_tables_from_native_document_with
 python -c "from core.table_matcher import rank_base_table_candidates, rank_native_table_candidates; print('table_matcher import ok')"
 ```
 
-检查实际输入文件：
-
-```powershell
-Get-ChildItem data/output/real_scan_tuning
-Get-ChildItem data/base_docs
-```
-
-测试扫描件表格提取：
-
-```powershell
-python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); print('image_count:', len(imgs)); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; img = imgs[0]; print('image:', img); engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); tables = extract_tables_with_metadata(blocks); print('scan tables:', len(tables)); print(tables[0]['df'].shape if tables else 'no table'); print(tables[0]['df'].head() if tables else 'no table')"
-```
-
-测试扫描件 DataFrame 首行表头提升：
-
-```powershell
-python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.data_normalize import normalize_dataframe; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; img = imgs[0]; engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); df = extract_tables_with_metadata(blocks)[0]['df']; promoted = normalize_dataframe(df, key_columns=['序号'], promote_first_row_to_header=True); print(promoted.columns.tolist()); print(promoted.shape); print(promoted.head())"
-```
-
-测试 Top-K 表格候选匹配：
-
-```powershell
-python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.data_normalize import normalize_dataframe; from core.table_matcher import rank_native_table_candidates; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); files = list(Path('data/base_docs').glob('*.docx')) + list(Path('data/base_docs').glob('*.pdf')); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; assert files, 'No DOCX/PDF found in data/base_docs/'; img = imgs[0]; engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); scan_df = extract_tables_with_metadata(blocks)[0]['df']; scan_df = normalize_dataframe(scan_df, key_columns=['序号'], promote_first_row_to_header=True); ranked = rank_native_table_candidates(scan_df, [str(p) for p in files], key_columns=['序号'], top_k=10); cols = ['score','decision','column_score','text_score','shape_score','key_overlap_score','base_source_file','base_table_index','base_shape']; print(ranked[cols] if not ranked.empty else 'no candidates')"
-```
-
 ## RAG Decision
 
 当前阶段不实现 RAG。
-
-原因：
-
-- 当前项目核心任务是确定性工程审计比对，不是知识问答生成
-- RAG 容易引入字段语义猜测、表格内容补全和不可追溯判断
-- 禁止 LLM 参与最终审计数据生成、字段匹配、金额判断和篡改判定
-- 当前真正需要的是确定性证据链索引，而不是生成式检索问答
-
-允许的未来方向是：
-
-```text
-compare result
-        ↓
-evidence_index
-        ↓
-read-only QA / explanation layer
-```
 
 禁止的方向是：
 
@@ -236,14 +224,12 @@ RAG
 LLM decides field matching, missing values, amount equality, or tampering
 ```
 
-## Notes
-
-如果 `scan_df` 与 `base_df` 的列名不一致，先不要修改 `align_compare.py`，应先考虑新增一个显式列名映射模块，例如：
+允许的未来方向是：
 
 ```text
-core/column_mapping.py
+compare result
+        ↓
+evidence_index
+        ↓
+read-only QA / explanation layer
 ```
-
-列名映射必须是确定性规则，不允许使用 LLM 猜测字段对应关系。
-
-如果后续对真实文档执行 Document-first pipeline，应优先验证页面级解析、页面对齐、元素级差异和证据索引，再进入表格精查。

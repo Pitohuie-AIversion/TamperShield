@@ -97,7 +97,7 @@ LLMs must not participate in final audit data generation or audit judgment.
 
 ## Current Development Focus
 
-The Document-first core pipeline and optional `main.py` integration have been implemented.
+The Document-first pipeline, optional `main.py` integration, and EvidenceIndex-based Markdown report generation have been implemented.
 
 Completed core modules and entrypoints:
 
@@ -109,27 +109,27 @@ core/content_compare.py
 core/table_compare.py
 core/evidence_index.py
 core/document_pipeline.py
+core/report_generator.py
 main.py::run_document_first_pipeline(...)
 ```
 
-The current focus is Phase 9:
+The current focus is Phase 10:
 
 ```text
-report generation from EvidenceIndex
+real document validation
 ```
 
-Rules for Phase 9:
+Rules for Phase 10:
 
 ```text
-- Add a report generation layer only when explicitly asked.
-- The report generator must take EvidenceIndex as input.
-- Do not re-run document parsing inside the report generator.
-- Do not re-run page alignment inside the report generator.
-- Do not re-run content comparison inside the report generator.
-- Do not re-run table comparison inside the report generator.
-- Reports must be organized by page and evidence category.
-- File writing must be explicit and permission-gated.
-- Do not generate default output paths.
+- Use real candidate document and baseline document pairs.
+- Validate the full Document-first flow through run_document_first_pipeline(...).
+- Verify that the default behavior returns EvidenceIndex and does not write files.
+- Verify that report_output_path with allow_write=False blocks writing.
+- Verify that report_output_path with allow_write=True writes a Markdown report.
+- Record observed parser, alignment, content comparison, table comparison, evidence index, and report issues.
+- Do not refactor core architecture before collecting validation evidence.
+- Do not use LLMs to judge document tampering, field correspondence, missing values, or amount equality.
 ```
 
 Do not recreate already completed modules unless explicitly asked.
@@ -427,6 +427,11 @@ core/document_pipeline.py
     collect_document_differences(...)
     compare_parsed_documents(...)
     compare_documents(...)
+
+core/report_generator.py
+    generate_markdown_report(...)
+    write_text_report(...)
+    generate_report_bundle(...)
 
 main.py
     run_tamper_shield_pipeline(...)

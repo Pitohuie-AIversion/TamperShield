@@ -6,29 +6,15 @@
 - [x] `core/pre_processing.py` 移除 HSV 红章白化流程
 - [x] `core/pre_processing.py` 改为 RGB/R 通道红章抑制
 - [x] `core/pre_processing.py` 增加 `black_text_mask` 黑字保护逻辑
-- [x] `core/pre_processing.py` 的 `binary` 模式保持严格二值输出
 - [x] `core/pre_processing.py` 使用 `HoughLinesP` + `cv2.minAreaRect` 进行 Deskew
-- [x] `tools/batch_tune_thresholds.py` 恢复完整批处理逻辑
-- [x] `tools/batch_tune_thresholds.py` 默认不写文件，仅在显式传入 `--output-dir` 时输出
 - [x] `core/ocr_engine.py` 删除顶层 `from paddleocr import PPStructure`
 - [x] `core/ocr_engine.py` 改为 PaddleOCR 结构化引擎懒加载
 - [x] `core/ocr_engine.py::parse_layout_to_blocks()` 已兼容 callable engine 和 `.predict()` engine
 - [x] PaddleOCR 3.x 组合测试完成：`paddle==3.2.2`、`paddleocr==3.5.0`、`paddlex==3.5.1`
-- [x] `PPStructureV3` engine 创建成功
 - [x] `PPStructureV3.predict()` 真实图片测试成功
-- [x] 输出对象确认为 `LayoutParsingResultV2`
-- [x] 成功读取 `table_res_list`
-- [x] 成功读取 `pred_html`
-- [x] 成功通过 `pd.read_html(StringIO(pred_html))` 转为 DataFrame
-- [x] `extract_tables_with_metadata()` 已支持 PPStructureV3 输出
+- [x] `extract_tables_with_metadata()` 已支持 `LayoutParsingResultV2 → table_res_list → pred_html → DataFrame`
 - [x] `extract_tables_with_metadata()` 保留旧版 PPStructure dict 兼容层
-- [x] 已确认扫描 PDF 不能作为原生 `base_df` 来源
-- [x] 已确认电子稿 PDF 可通过 `pdfplumber` 提取表格，但跨页表会被拆分
-- [x] 已确认同名 DOCX 包含 5 个原生 Word 表格，更适合作为 `base_df` 优先来源
-- [x] 在 `core/text_parser.py` 新增 DOCX 表格提取函数：`extract_tables_from_native_docx_with_metadata()`
-- [x] 在 `core/text_parser.py` 新增兼容入口：`extract_tables_from_native_docx()`
-- [x] DOCX 表格提取已保留 `_source_file`、`_source_table`、`_source_row` 元数据
-- [x] 指定 DOCX 已成功提取 5 张原生表格
+- [x] 原生 DOCX/PDF 表格提取已支持
 - [x] `normalize_dataframe()` 已支持 `promote_first_row_to_header=True`
 - [x] 扫描件 DataFrame 已可通过首行提升得到 `序号`、`分项`、`澄清项`、`回复`
 - [x] 新增 `core/table_matcher.py`
@@ -36,9 +22,6 @@
 - [x] 新增 `rank_native_table_candidates()`
 - [x] 表级匹配评分包含 `column_score`、`text_score`、`shape_score`、`key_overlap_score`
 - [x] 表级匹配决策包含 `auto_match`、`needs_review`、`no_match`
-- [x] 自测通过：同一 DOCX 表匹配自身得到 `auto_match`
-- [x] 新增原生文档表格统一入口：`extract_tables_from_native_document_with_metadata()`
-- [x] 新增原生文档批量入口：`extract_tables_from_native_documents_with_metadata()`
 - [x] 明确当前阶段不实现 RAG
 - [x] Phase 1：完成 Document-first 项目规则与架构调整
 - [x] 更新 `PROJECT_RULES.md`，明确 TamperShield 是工程文档防篡改比对系统，不是表格比对工具
@@ -78,11 +61,17 @@
 - [x] 实现 `compare_parsed_documents()`
 - [x] 实现 `compare_documents()`
 - [x] 新 Document-first pipeline 已可在内存中返回 `EvidenceIndex`
-- [x] 旧 `main.py::run_tamper_shield_pipeline(...)` 暂时保留
+- [x] Phase 8b：`main.py` 可选接入 Document-first pipeline
+- [x] 保留旧入口 `main.py::run_tamper_shield_pipeline(...)`
+- [x] 新增并行入口 `main.py::run_document_first_pipeline(...)`
+- [x] `run_document_first_pipeline(...)` 调用 `core.document_pipeline.compare_documents(...)`
+- [x] `run_document_first_pipeline(...)` 默认返回 `EvidenceIndex`
+- [x] `run_document_first_pipeline(...)` 不写文件、不生成报告、不调用 `ensure_write_allowed()`
+- [x] 旧 table-first pipeline 与新 Document-first pipeline 已可并存
 
 ## Current Focus
 
-当前阶段已完成 Document-first 核心内存 pipeline。
+当前阶段已完成 Document-first pipeline 与 `main.py` 的可选接入。
 
 当前已完成主线：
 
@@ -91,60 +80,53 @@ candidate document
         vs
 baseline document
         ↓
-document_parser
-        ↓
-page_aligner
-        ↓
-content_compare
-        ↓
-table_compare, only when needed
-        ↓
-evidence_index
-        ↓
 core/document_pipeline.py
+        ↓
+main.py::run_document_first_pipeline(...)
         ↓
 EvidenceIndex
 ```
 
-当前重点不是继续新建核心模块，而是进入：
+当前重点进入：
 
 ```text
-Phase 8b：main.py 可选接入 Document-first pipeline
+Phase 9：报告导出
 ```
 
-注意：旧的 `main.py::run_tamper_shield_pipeline(...)` 暂时保留，不得删除。
+Phase 9 的目标是新增报告导出能力，但报告必须以 `EvidenceIndex` 为输入，不能重新执行解析、对齐、比对或表格精查。
+
+注意：旧的 `main.py::run_tamper_shield_pipeline(...)` 仍然保留，不得删除。
 
 ## Next
-
-### Phase 8b：main.py 可选接入 Document-first pipeline
-
-- [ ] 保留旧的 `run_tamper_shield_pipeline(...)`
-- [ ] 在 `main.py` 中新增并行入口 `run_document_first_pipeline(...)`
-- [ ] 新入口调用 `core.document_pipeline.compare_documents(...)`
-- [ ] 新入口默认不写文件，只返回 `EvidenceIndex`
-- [ ] 如需写入结果，必须继续遵守 `allow_write` 和 `overwrite` 规则
-- [ ] 不得删除或破坏旧 table-first pipeline
 
 ### Phase 9：报告导出
 
 - [ ] 新增报告导出模块，例如 `core/report_generator.py`
-- [ ] 报告输入应为 `EvidenceIndex`
+- [ ] 报告输入必须是 `EvidenceIndex`
+- [ ] 报告生成模块不得重新调用 `document_parser`
+- [ ] 报告生成模块不得重新调用 `page_aligner`
+- [ ] 报告生成模块不得重新调用 `content_compare`
+- [ ] 报告生成模块不得重新调用 `table_compare`
 - [ ] 报告应按页码组织
 - [ ] 每页下按元素类型组织差异
 - [ ] 表格单元格差异作为页面差异的子项
 - [ ] 报告必须保留证据定位信息
 - [ ] 报告导出必须显式传入输出路径
 - [ ] 写文件必须要求 `allow_write=True`
+- [ ] 不得默认生成保存路径
+- [ ] 不得覆盖已有文件，除非 `overwrite=True`
 
 ### Phase 10：真实文档验证
 
 - [ ] 使用一组真实 candidate document 和 baseline document 做端到端测试
+- [ ] 验证 `run_document_first_pipeline(...)`
 - [ ] 验证 PDF 文本页解析
 - [ ] 验证 DOCX 近似单页解析
 - [ ] 验证 `page_aligner` 对新增页、缺页、错页的表现
 - [ ] 验证 `content_compare` 的文本差异和元素差异输出
 - [ ] 验证 `table_compare` 在 DataFrame payload 可用和不可用场景下的表现
 - [ ] 验证 `EvidenceIndex` summary、filter 和 group by page
+- [ ] 验证 Phase 9 报告导出结果
 
 ## Test Commands
 
@@ -164,6 +146,12 @@ python -c "from core.table_compare import compare_page_tables_if_needed; print('
 python -c "from core.evidence_index import build_evidence_index, EvidenceIndex; print('evidence_index import ok')"
 
 python -c "from core.document_pipeline import compare_documents, compare_parsed_documents, collect_document_differences; print('document_pipeline import ok')"
+
+python -c "from main import run_tamper_shield_pipeline, run_document_first_pipeline; print('main pipeline imports ok')"
+
+python -c "import inspect; from main import run_document_first_pipeline; print(inspect.signature(run_document_first_pipeline))"
+
+python -c "from main import run_tamper_shield_pipeline; print(run_tamper_shield_pipeline.__name__)"
 ```
 
 内存 pipeline 测试：
@@ -182,27 +170,13 @@ Select-String -Path core/*.py,tools/*.py -Pattern "<<<<<<<|=======|>>>>>>>"
 
 以下命令用于兼容旧 OCR / DataFrame / 表格子模块流程。它们不是新的文档级主流程。
 
-测试图像预处理 import：
-
 ```powershell
 python -c "from core.pre_processing import preprocess_pipeline, remove_red_seal, estimate_skew_angle, deskew_image; print('pre_processing import ok')"
-```
 
-测试 OCR engine import：
-
-```powershell
 python -c "from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata, inspect_structure_output; print('ocr_engine import ok')"
-```
 
-测试原生文档表格解析 import：
-
-```powershell
 python -c "from core.text_parser import extract_tables_from_native_document_with_metadata, extract_tables_from_native_documents_with_metadata; print('text_parser import ok')"
-```
 
-测试 table matcher import：
-
-```powershell
 python -c "from core.table_matcher import rank_base_table_candidates, rank_native_table_candidates; print('table_matcher import ok')"
 ```
 
@@ -225,22 +199,10 @@ python -c "from pathlib import Path; from core.ocr_engine import build_pp_struct
 python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.data_normalize import normalize_dataframe; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; img = imgs[0]; engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); df = extract_tables_with_metadata(blocks)[0]['df']; promoted = normalize_dataframe(df, key_columns=['序号'], promote_first_row_to_header=True); print(promoted.columns.tolist()); print(promoted.shape); print(promoted.head())"
 ```
 
-测试候选电子稿表格批量提取：
-
-```powershell
-python -c "from pathlib import Path; from core.text_parser import extract_tables_from_native_documents_with_metadata; files = list(Path('data/base_docs').glob('*.docx')) + list(Path('data/base_docs').glob('*.pdf')); print('files:', len(files)); assert files, 'No DOCX/PDF found in data/base_docs/'; tables = extract_tables_from_native_documents_with_metadata([str(p) for p in files]); print('base tables:', len(tables)); [print(i, t['df'].shape, t.get('source_file',''), t.get('table_index',''), t['df'].columns.tolist()) for i,t in enumerate(tables[:10])]"
-```
-
 测试 Top-K 表格候选匹配：
 
 ```powershell
 python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.data_normalize import normalize_dataframe; from core.table_matcher import rank_native_table_candidates; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); files = list(Path('data/base_docs').glob('*.docx')) + list(Path('data/base_docs').glob('*.pdf')); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; assert files, 'No DOCX/PDF found in data/base_docs/'; img = imgs[0]; engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); scan_df = extract_tables_with_metadata(blocks)[0]['df']; scan_df = normalize_dataframe(scan_df, key_columns=['序号'], promote_first_row_to_header=True); ranked = rank_native_table_candidates(scan_df, [str(p) for p in files], key_columns=['序号'], top_k=10); cols = ['score','decision','column_score','text_score','shape_score','key_overlap_score','base_source_file','base_table_index','base_shape']; print(ranked[cols] if not ranked.empty else 'no candidates')"
-```
-
-最小 scan/base 对齐测试：
-
-```powershell
-python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.text_parser import extract_tables_from_native_documents_with_metadata; from core.data_normalize import normalize_dataframe; from core.table_matcher import rank_base_table_candidates; from core.align_compare import compare_cells_with_tolerance; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); files = list(Path('data/base_docs').glob('*.docx')) + list(Path('data/base_docs').glob('*.pdf')); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; assert files, 'No DOCX/PDF found in data/base_docs/'; img = imgs[0]; engine = build_pp_structure(use_gpu=False); scan_df = extract_tables_with_metadata(parse_layout_to_blocks(engine, str(img)))[0]['df']; scan_df = normalize_dataframe(scan_df, key_columns=['序号'], promote_first_row_to_header=True); base_tables = extract_tables_from_native_documents_with_metadata([str(p) for p in files]); ranked = rank_base_table_candidates(scan_df, base_tables, key_columns=['序号'], top_k=1); assert not ranked.empty, 'No ranked base candidate'; print(ranked[['score','decision','base_source_file','base_table_index','base_shape']]); source = ranked.iloc[0]['base_source_file']; idx = int(ranked.iloc[0]['base_table_index']); candidates = [t for t in base_tables if t.get('source_file') == source and int(t.get('table_index', -1)) == idx]; assert candidates, 'Matched base table not found'; base_df = normalize_dataframe(candidates[0]['df'], key_columns=['序号']); diff = compare_cells_with_tolerance(base_df, scan_df, key_columns=['序号'], max_distance=2); print('matched source:', source); print('matched table:', idx); print('diff rows:', len(diff)); print(diff.head())"
 ```
 
 ## RAG Decision
@@ -251,7 +213,7 @@ python -c "from pathlib import Path; from core.ocr_engine import build_pp_struct
 
 - 当前项目核心任务是确定性工程审计比对，不是知识问答生成
 - RAG 容易引入字段语义猜测、表格内容补全和不可追溯判断
-- `PROJECT_RULES.md` 和 `AGENTS.md` 已明确禁止 LLM 参与最终审计数据生成、字段匹配、金额判断和篡改判定
+- 禁止 LLM 参与最终审计数据生成、字段匹配、金额判断和篡改判定
 - 当前真正需要的是确定性证据链索引，而不是生成式检索问答
 
 允许的未来方向是：

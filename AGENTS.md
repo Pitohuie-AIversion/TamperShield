@@ -97,9 +97,9 @@ LLMs must not participate in final audit data generation or audit judgment.
 
 ## Current Development Focus
 
-The Document-first core in-memory pipeline has been implemented.
+The Document-first core pipeline and optional `main.py` integration have been implemented.
 
-Completed core modules:
+Completed core modules and entrypoints:
 
 ```text
 core/document_models.py
@@ -109,23 +109,27 @@ core/content_compare.py
 core/table_compare.py
 core/evidence_index.py
 core/document_pipeline.py
+main.py::run_document_first_pipeline(...)
 ```
 
-The current focus is Phase 8b:
+The current focus is Phase 9:
 
 ```text
-optional main.py integration
+report generation from EvidenceIndex
 ```
 
-Rules for Phase 8b:
+Rules for Phase 9:
 
 ```text
-- Keep the legacy main.py::run_tamper_shield_pipeline(...) function.
-- Do not delete or rewrite the legacy table-first pipeline.
-- Add a parallel function such as run_document_first_pipeline(...).
-- The new function should call core.document_pipeline.compare_documents(...).
-- The new function should return EvidenceIndex by default.
-- File writing must remain explicit and permission-gated.
+- Add a report generation layer only when explicitly asked.
+- The report generator must take EvidenceIndex as input.
+- Do not re-run document parsing inside the report generator.
+- Do not re-run page alignment inside the report generator.
+- Do not re-run content comparison inside the report generator.
+- Do not re-run table comparison inside the report generator.
+- Reports must be organized by page and evidence category.
+- File writing must be explicit and permission-gated.
+- Do not generate default output paths.
 ```
 
 Do not recreate already completed modules unless explicitly asked.
@@ -426,6 +430,7 @@ core/document_pipeline.py
 
 main.py
     run_tamper_shield_pipeline(...)
+    run_document_first_pipeline(...)
 ```
 
 Do not remove backward-compatible entrypoints.

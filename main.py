@@ -133,16 +133,20 @@ def run_document_first_pipeline(
     page_low_confidence_threshold: float = 0.45,
     page_search_window: int = 2,
     page_text_similarity_threshold: float = 0.98,
+    report_output_path: Optional[str] = None,
+    allow_write: bool = False,
+    overwrite: bool = False,
 ) -> EvidenceIndex:
     """
-    Run the Document-first in-memory comparison pipeline.
+    Run the Document-first comparison pipeline.
 
-    This function does not write files, export reports, run OCR preprocessing,
-    or replace the legacy table-first pipeline. It returns an EvidenceIndex.
+    By default, this function only returns an EvidenceIndex and does not write
+    files. If report_output_path is provided, a Markdown report is generated and
+    written only when allow_write=True.
     """
     from core.document_pipeline import compare_documents
 
-    return compare_documents(
+    index = compare_documents(
         candidate_file=candidate_file,
         baseline_file=baseline_file,
         key_columns=key_columns,
@@ -152,6 +156,19 @@ def run_document_first_pipeline(
         page_search_window=page_search_window,
         page_text_similarity_threshold=page_text_similarity_threshold,
     )
+
+    if report_output_path is not None:
+        from core.report_generator import generate_markdown_report, write_text_report
+
+        report_text = generate_markdown_report(index)
+        write_text_report(
+            report_text,
+            output_path=report_output_path,
+            allow_write=allow_write,
+            overwrite=overwrite,
+        )
+
+    return index
 
 
 if __name__ == "__main__":

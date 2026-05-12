@@ -2,9 +2,68 @@
 
 ## 项目定位与核心原则
 
-TamperShield 的目标是构建“一对多”跨模态工程文档防篡改比对流水线，处理对象是扫描件总文件与原生电子件子文件之间的结构化比对关系。项目主要面向工程造价清单、工程量清单、结算书、审计附件、报价单、合同清单以及其他复杂表格型工程文档。系统目标不是普通 OCR，而是完成从结构化提取、表格对齐、字段比对、篡改定位到可追溯报告生成的完整流程。
+TamperShield 的目标是构建 Document-first 的工程文档防篡改比对系统，不是表格比对工具。处理对象是一份待核验工程文档 vs 一份或多份基准电子稿，项目主要面向工程造价清单、工程量清单、结算书、审计附件、报价单、合同清单以及其他复杂工程文档。系统目标不是普通 OCR，也不是先抽表格再推断文档结论，而是对完整文档进行核验，包括页面、段落、标题、表格、图片、签章、页眉页脚、附件页、空白页和版式区域，并生成可追溯的审计证据链。
+
+表格只是文档中的一种元素，必须作为子能力下沉到 `table_compare` 层，不得作为主流程入口。`core/table_matcher.py` 和 `core/align_compare.py` 仍然有价值，但只能作为页面或元素级比对发现需要精查表格时调用的子模块。最终报告必须基于页面、区域、元素和证据链组织，不得只输出 DataFrame 差异后推断整份文档结论。
 
 工程审计容不得任何幻觉。所有数据提取、表格结构恢复、字段补全、金额比对、数量比对、逻辑判断和篡改判定环节，严禁引入大语言模型进行语义猜测、表格脑补、字段补全或内容修正。所有最终结果必须严格基于视觉坐标、OCR 输出、原生 PDF 内部结构、图像处理结果、表格物理结构、确定性规则和 DataFrame 比对逻辑。大语言模型只能用于代码辅助、错误分析、流程设计、规则整理、报告文字润色和开发说明，不得参与最终审计数据的生成、修正、补全或判断。
+
+## Document-first 架构规则
+
+项目主流程必须遵循：
+
+```text
+candidate document
+        vs
+baseline document
+        ↓
+document_parser
+        ↓
+page_aligner
+        ↓
+content_compare
+        ↓
+table_compare, only when needed
+        ↓
+evidence_index
+        ↓
+traceable audit report
+```
+
+模块职责：
+
+```text
+document_parser
+  解析 DOCX / PDF 的全文内容、页面、段落、表格、图片、页眉页脚、签章和区域信息
+
+page_aligner
+  将待核验文档页面与基准电子稿页面进行顺序对齐、错页检测、缺页检测和新增页检测
+
+content_compare
+  比较页面级文本、段落级文本、标题、页眉页脚、图片、签章、空白页状态和版式变化
+
+table_compare
+  只在页面中存在表格且需要精查时调用，用于表格级匹配、行列对齐和单元格级比对
+
+evidence_index
+  记录每个差异来自哪个文件、哪一页、哪个段落、哪个表格、哪个单元格、哪个图片区域或哪个页面区域
+```
+
+严禁使用以下主线：
+
+```text
+Table compare
+  → Document conclusion
+```
+
+必须使用以下主线：
+
+```text
+Document compare
+  → Page compare
+    → Element compare
+      → Table compare, if needed
+```
 
 ## 强制技术栈架构
 
@@ -39,23 +98,23 @@ pd.read_html(pred_html)
 
 Windows 中文路径测试时，优先使用 Python 内部 `Path.glob()` 获取真实路径，避免 PowerShell 手写中文路径导致转码、空格或文件名匹配问题。
 
-原生电子件必须优先直接解析内部结构。对于 `.docx` 原生电子稿，应优先使用 `python-docx` 提取 Word 内部表格，因为 DOCX 表格通常保留最干净的行列结构、合并单元格和原始字段文本，适合作为 `base_df` 的首选来源。对于 `.pdf` 原生电子稿，`PyMuPDF` 用于提取 PDF 文本、页面、坐标和块信息，`pdfplumber` 用于无损提取 PDF 表格结构。除非用户明确要求，否则不得无故将原生 PDF 或 DOCX 转换为图片后再 OCR，也不得无故丢弃原生文本和表格结构。能够从原生文档内部对象直接提取的信息，不得降级为图像 OCR 处理。
+原生电子件必须优先直接解析内部结构。对于 `.docx` 原生电子稿，应优先使用 `python-docx` 按文档原始顺序提取段落、标题、表格和可识别结构；对于 `.pdf` 原生电子稿，`PyMuPDF` 用于提取 PDF 页面、文本、坐标、块信息和图片区域，`pdfplumber` 用于无损提取 PDF 表格结构。除非用户明确要求，否则不得无故将原生 PDF 或 DOCX 转换为图片后再 OCR，也不得无故丢弃原生文本、页面结构和表格结构。能够从原生文档内部对象直接提取的信息，不得降级为图像 OCR 处理。
 
-当同一份原生电子件同时存在 `.docx` 和 `.pdf` 版本时，默认优先使用 `.docx` 表格作为 `base_df` 来源；PDF 版本用于页码、版式、坐标和追溯校验。原因是 PDF 表格可能因分页被拆成多个片段，续页表头可能被误识别为数据行或将数据行误当作列名，从而导致假差异。只有在 DOCX 缺失、DOCX 表格不完整，或用户明确要求以 PDF 为准时，才优先使用 PDF 表格作为 `base_df`。
+当同一份电子稿同时存在 `.docx` 和 `.pdf` 版本时，应先进入文档级对齐：DOCX 提供可编辑的基准内容顺序，PDF 提供页码、版式、坐标和发布态追溯校验。不得默认只抽 DOCX 表格作为 `base_df` 并跳过逐页内容核验。PDF 表格可能因分页被拆成多个片段，续页表头可能被误识别为数据行或将数据行误当作列名，因此未完成页面级和元素级定位前，PDF 表格比对结果只能作为页面内诊断信息。
 
 DOCX 表格提取必须进入 `pandas.DataFrame`，并保留来源元数据，例如 `_source_file`、`_source_table`、`_source_row`。DOCX 表格解析不得使用 LLM 猜测字段、补全单元格或判断列名含义。面对 DOCX 合并单元格，应使用 `python-docx` 的结构化结果和确定性规则展开或保留重复值，再进入 `normalize_dataframe()`。
 
 PDF 表格提取如遇跨页续表，不得直接把每个 `pdfplumber` 表片段当成完整独立表进行比对。必须先判断列结构是否延续、是否需要继承上一页表头、是否需要合并同结构续表。未完成续表合并前，PDF 表格比对结果只能作为诊断信息，不得直接作为最终篡改判断依据。
 
-数据对齐与比对必须统一进入 `pandas.DataFrame`。所有提取数据进入 `align_compare.py` 前，必须完成 DataFrame 化、列名标准化、合并单元格展开、空白字符清洗、数值字段格式清洗和主键字段明确。面对合并单元格，必须使用 `df.ffill()` 或等价显式逻辑展开主键。文本容错必须基于 Levenshtein 编辑距离，禁止用大语言模型语义相似度或自然语言判断替代确定性比对。金额、数量、单价和合价等字段必须先去除逗号、人民币符号和异常空白，统一负号格式和小数位，再转换为 `float` 或 `Decimal` 进行比较。金额字段推荐使用 `Decimal`，金额比对必须设置明确误差阈值，例如 0.01 元。
+文档级对齐与比对必须先形成可追溯的页面、区域和元素结构，再根据元素类型进入段落、图片、签章、空白页或表格比对。表格元素进入 `align_compare.py` 前，必须完成 DataFrame 化、列名标准化、合并单元格展开、空白字符清洗、数值字段格式清洗和主键字段明确。面对合并单元格，必须使用 `df.ffill()` 或等价显式逻辑展开主键。文本容错必须基于 Levenshtein 编辑距离，禁止用大语言模型语义相似度或自然语言判断替代确定性比对。金额、数量、单价和合价等字段必须先去除逗号、人民币符号和异常空白，统一负号格式和小数位，再转换为 `float` 或 `Decimal` 进行比较。金额字段推荐使用 `Decimal`，金额比对必须设置明确误差阈值，例如 0.01 元。
 
-扫描件表格与原生电子件表格进入单元格比对前，必须先进行表级候选匹配。表级匹配应使用确定性特征打分，例如列名相似度、表头/前几行文本相似度、行列结构相似度、主键候选值重合度，并输出可解释的候选排序结果。表级匹配不得使用 LLM 猜测表格对应关系。只有当候选分数达到明确阈值时，才允许进入 `compare_cells_with_tolerance()`；低分候选必须标记为 `no_match` 或 `needs_review`，等待人工确认。推荐将该逻辑放入独立模块，例如 `core/table_matcher.py`，避免污染 `align_compare.py` 的单元格比对职责。
+页面内表格元素进入单元格比对前，必须先进行表级候选匹配。表级匹配应使用确定性特征打分，例如列名相似度、表头/前几行文本相似度、行列结构相似度、主键候选值重合度，并输出可解释的候选排序结果。表级匹配不得使用 LLM 猜测表格对应关系。只有当候选分数达到明确阈值，或页面级证据和用户确认已锁定对应表格时，才允许进入 `compare_cells_with_tolerance()`；低分候选必须标记为 `no_match` 或 `needs_review`，等待人工确认。该逻辑保留在 `core/table_matcher.py`，作为 `table_compare` 层子能力，避免污染文档级、页面级和单元格比对职责。
 
 ## 代码规范与目录约束
 
-项目必须保持统一数据流。扫描件或原生 PDF 首先进入图像预处理模块或原生 PDF 解析模块，随后进入结构提取模块，再进入数据标准化模块，最终以 `pandas.DataFrame` 形式进入 `align_compare.py`，最后由报告模块生成结果。不得将 OCR 原始 list、dict 或纯文本结果直接送入比对模块。
+项目必须保持统一数据流。待核验文档和基准电子稿首先进入 `document_parser`，形成可追溯的页面和元素结构；随后进入 `page_aligner` 完成页面顺序对齐、缺页/新增页/错页检测；再进入 `content_compare` 做页面级和元素级比对；只有页面内表格需要精查时，才进入 `table_compare`，并调用 `table_matcher.py` 与 `align_compare.py`。不得将表格比对结果直接上升为整份文档结论，也不得将 OCR 原始 list、dict 或纯文本结果直接送入最终审计判断。
 
-项目必须保持模块化。`main.py` 只能作为 Pipeline 宏观调度中心，不能堆叠图像预处理细节、OCR 解析细节、DataFrame 清洗细节、比对算法细节或报告生成细节。推荐模块包括 `core/pre_processing.py`、`core/structure_extract.py`、`core/native_pdf_parser.py`、`core/data_normalize.py`、`core/align_compare.py` 和 `core/report_generator.py`。模块之间必须通过明确数据结构传递，不允许依赖全局变量传递状态。
+项目必须保持模块化。`main.py` 只能作为 Pipeline 宏观调度中心，不能堆叠图像预处理细节、OCR 解析细节、文档解析细节、页面对齐细节、DataFrame 清洗细节、比对算法细节或报告生成细节。推荐架构方向包括 `document_parser`、`page_aligner`、`content_compare`、`table_compare`、`evidence_index` 和 `report_generator`。现有 `core/pre_processing.py`、`core/ocr_engine.py`、`core/table_matcher.py`、`core/data_normalize.py` 和 `core/align_compare.py` 应作为这些层级中的子能力被调用。模块之间必须通过明确数据结构传递，不允许依赖全局变量传递状态。
 
 测试扫描件输入应放入 `data/raw_scans/`。原生电子件输入应放入 `data/base_docs/`。导出报告、中间清洗图、结构化表格和比对结果应输出到 `data/output/`。未经用户明确确认，不得主动创建、覆盖、删除、移动或重命名任何文件。
 

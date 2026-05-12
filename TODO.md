@@ -46,63 +46,107 @@
 
 ## Next
 
-- [ ] 准备一份受控实际文档测试集：1 张扫描件图片 + 一批候选电子稿 DOCX/PDF
-- [ ] 将候选电子稿统一放入 `data/base_docs/`
-- [ ] 将扫描件预处理图片统一放入 `data/output/real_scan_tuning/`
-- [ ] 批量读取更多电子稿 DOCX/PDF 表格，扩大 `base_df` 候选池
-- [ ] 使用 `extract_tables_from_native_documents_with_metadata()` 批量提取候选原生表格
-- [ ] 使用 `rank_native_table_candidates()` 对当前扫描件表格进行 Top-K 候选排序
-- [ ] 输出 Top-K 候选，包括 `score`、`decision`、`column_score`、`text_score`、`shape_score`、`key_overlap_score`、`base_source_file`、`base_table_index` 和 `base_shape`
-- [ ] 检查 Top-K 候选中是否存在真实来源表格
-- [ ] 如果 Top-K 仍全部为 `no_match`，排查扫描件是否来自其他电子稿、附件、补遗、澄清回复文件或人工整理表
-- [ ] 如果 Top-K 候选列名相近但不完全一致，设计用户确认的确定性 `column_aliases`
-- [ ] 若用户确认 `column_aliases`，再实现或启用 `core/column_mapping.py`
-- [ ] 确认最终匹配的 `base_df` 后，手动确认 `key_columns` 和 `numeric_columns`
-- [ ] 运行最小 `compare_cells_with_tolerance()` 对齐测试
-- [ ] 若对齐结果合理，设计确定性 `core/evidence_index.py`
-- [ ] `evidence_index.py` 应将 diff 追溯到 `source_file`、`source_page`、`source_table`、`source_row`、`column_name`、`raw_html`、`cell_box_list` 或原始 DataFrame 行
-- [ ] PDF 跨页续表合并逻辑后置处理，不阻塞当前 DOCX/base candidate 路线
-- [ ] 最后再接入 `main.py` 完整 pipeline
-- [ ] 完整 pipeline 稳定后，再设计报告导出格式
-- [ ] 只有在 deterministic report 和 evidence index 稳定后，才考虑只读 QA 层；当前不做 RAG
+### Phase 1：项目规则与架构调整
+
+- [ ] 更新 `PROJECT_RULES.md`
+- [ ] 更新 `AGENTS.md`
+- [ ] 更新 `TODO.md`
+- [ ] 明确 `table_matcher.py` 和 `align_compare.py` 下沉为表格精查子模块
+
+### Phase 2：统一文档数据结构
+
+- [ ] 设计 `DocumentElement`
+- [ ] 设计 `DocumentPage`
+- [ ] 设计 `ParsedDocument`
+- [ ] 元素类型支持 `paragraph`、`title`、`table`、`image`、`header`、`footer`、`signature`、`blank`、`unknown`
+
+### Phase 3：document_parser
+
+- [ ] 设计 `parse_document(file_path)`
+- [ ] 支持 PDF 页面文本提取
+- [ ] 支持 DOCX 原生段落和表格提取
+- [ ] 保留原有 DOCX 表格提取逻辑，但不得让表格提取成为主入口
+
+### Phase 4：page_aligner
+
+- [ ] 设计 `align_pages(candidate_pages, baseline_pages)`
+- [ ] 支持页面顺序对齐
+- [ ] 支持新增页、缺失页、错页和空白页检测
+
+### Phase 5：content_compare
+
+- [ ] 设计 `compare_page(candidate_page, baseline_page)`
+- [ ] 输出页面级差异
+- [ ] 输出段落级差异
+- [ ] 标记疑似表格区域 `requires_table_compare=True`
+
+### Phase 6：table_compare 下沉
+
+- [ ] `table_matcher.py` 作为表格候选匹配子模块
+- [ ] `align_compare.py` 作为单元格级比对子模块
+- [ ] 只有页面级比对需要精查时，才调用表格比对
+
+### Phase 7：evidence_index
+
+- [ ] 设计统一 `Difference` 数据结构
+- [ ] 每条差异必须记录 `diff_type`、`severity`、`candidate_page`、`baseline_page`、`element_id` 和 `location`
+- [ ] 表格差异必须追溯到 `source_file`、`source_page`、`source_table`、`source_row`、`column_name`
+- [ ] 图片和签章差异必须追溯到页面和区域
+
+### Phase 8：main.py pipeline
+
+- [ ] 后续将 `main.py` 改造成宏观调度入口
+- [ ] 主入口应为 `compare_documents(candidate_file, baseline_file)`
+- [ ] `main.py` 不应直接堆叠 OCR、DataFrame 清洗和单元格比对细节
+
+### Phase 9：报告输出
+
+- [ ] 报告按页码组织
+- [ ] 每页下按元素类型组织差异
+- [ ] 表格单元格差异作为页面差异的子项
+- [ ] 报告必须保留证据定位信息
 
 ## Current Focus
 
-当前阶段重点不是 RAG，也不是继续调 PaddleOCR 或红章参数，而是构建确定性的候选表格定位流程：
+当前阶段重点从 DataFrame-first 调整为 Document-first。
+
+当前最小目标：
 
 ```text
-scan_df
+一份待核验文档
+        vs
+一份基准电子稿
         ↓
-normalize_dataframe()
+页面级文本提取
         ↓
-batch extract native DOCX/PDF tables
+页面顺序对齐
         ↓
-base_df candidate pool
+页面级差异输出
         ↓
-rank_native_table_candidates()
-        ↓
-Top-K deterministic table matching
-        ↓
-user-confirmed base_df
-        ↓
-key_columns / numeric_columns confirmation
-        ↓
-compare_cells_with_tolerance()
+差异证据索引
 ```
 
-当前最小目标是完成：
+新的主线是：
 
 ```text
-实际扫描件表格
+candidate document
+        vs
+baseline document
         ↓
-实际电子稿候选池
+document_parser
         ↓
-Top-K 表格来源定位
+page_aligner
         ↓
-人工确认 base_df
+content_compare
         ↓
-最小 deterministic comparison
+table_compare, only when needed
+        ↓
+evidence_index
+        ↓
+traceable audit report
 ```
+
+`table_matcher.py` 和 `align_compare.py` 保留为 `table_compare` 层的精查能力，不再作为文档比对主入口。
 
 ## RAG Decision
 
@@ -138,9 +182,11 @@ LLM decides field matching, missing values, amount equality, or tampering
 因此，当前优先级为：
 
 ```text
-table_matcher.py
+document_parser
         ↓
-column_mapping.py, if user-confirmed
+page_aligner
+        ↓
+content_compare
         ↓
 evidence_index.py
         ↓
@@ -148,6 +194,8 @@ report_generator.py
         ↓
 optional read-only QA
 ```
+
+`table_matcher.py` 和 `align_compare.py` 只在 `content_compare` 标记页面表格需要精查时进入 `table_compare` 子流程。
 
 ## Test Commands
 

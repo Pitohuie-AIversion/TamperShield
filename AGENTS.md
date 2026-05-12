@@ -14,19 +14,41 @@ Do not modify code before understanding the existing pipeline, public interfaces
 
 ## Project Mission
 
-TamperShield is a deterministic anti-tampering comparison pipeline for engineering documents.
+TamperShield is a Document-first deterministic anti-tampering comparison system for engineering documents. It is not a table comparison tool.
 
 The project compares:
 
 ```text
-scanned master document
+candidate document
         vs
-native electronic sub-documents
+baseline document
 ```
 
-The system must extract, normalize, align, compare, and report differences in complex engineering documents such as bills of quantities, cost sheets, settlement documents, audit attachments, quotation sheets, contract lists, and other table-heavy engineering files.
+The main pipeline is:
+
+```text
+candidate document
+        vs
+baseline document
+        ↓
+document_parser
+        ↓
+page_aligner
+        ↓
+content_compare
+        ↓
+table_compare, only when needed
+        ↓
+evidence_index
+        ↓
+traceable report
+```
+
+The system must extract, normalize, align, compare, and report differences across complete engineering documents, including pages, paragraphs, titles, tables, images, signatures, headers, footers, attachments, blank pages, and layout regions.
 
 This is not a general OCR project. It is an audit-oriented, deterministic document comparison system.
+
+Tables are document elements, not the primary pipeline. Do not treat table extraction, table matching, or `scan_df` / `base_df` comparison as the document comparison entrypoint. `core/table_matcher.py` and `core/align_compare.py` are table inspection capabilities under `table_compare`, not the main document comparison flow.
 
 ## Absolute Truthfulness Rule
 
@@ -75,29 +97,50 @@ LLMs must not participate in final audit data generation or audit judgment.
 
 ## Current Development Focus
 
-The current project stage is:
+The current project stage is shifting from DataFrame-first table comparison to Document-first engineering document verification.
+
+Target flow:
 
 ```text
-scan_df / base_df
+candidate document
+        vs
+baseline document
         ↓
-normalize_dataframe()
+document_parser
         ↓
-key_columns alignment
+page_aligner
         ↓
-compare_cells_with_tolerance()
+content_compare
+        ↓
+table_compare, only when needed
+        ↓
+evidence_index
+        ↓
+traceable report
 ```
 
 Current focus:
 
 ```text
-DataFrame normalization
-scan/base column comparison
-key column confirmation
-numeric column confirmation
-minimal deterministic comparison test
+page-level text extraction
+page order alignment
+page-level difference output
+element-level evidence tracking
+table comparison only when a page element needs table inspection
 ```
 
-Do not continue tuning PaddleOCR, red seal preprocessing, or report export unless explicitly requested.
+Before changing code, classify the change as one of:
+
+```text
+document_parser
+page_aligner
+content_compare
+table_compare
+evidence_index
+report_generator
+```
+
+If a task involves complete document comparison, prioritize page-level and element-level evidence chains before table matching or cell comparison. Do not continue tuning PaddleOCR, red seal preprocessing, table matching, or report export unless explicitly requested.
 
 ## Hard Technical Rules
 
@@ -246,13 +289,15 @@ Do not convert native PDFs to images for OCR unless the user explicitly asks.
 
 If native text or native table structure is available, use it before OCR.
 
-### DataFrame Rule
+### Table DataFrame Rule
 
-All extracted data must become `pandas.DataFrame` before entering comparison.
+Complete document comparison must start from pages and document elements, not from DataFrames.
+
+Only table elements that need table inspection should become `pandas.DataFrame` before entering `table_compare`.
 
 Do not send raw OCR outputs, dicts, lists, or plain text directly into `align_compare.py`.
 
-Before comparison, each DataFrame must complete:
+Before table comparison, each DataFrame must complete:
 
 ```text
 column name normalization

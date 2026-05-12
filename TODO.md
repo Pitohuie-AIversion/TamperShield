@@ -32,39 +32,122 @@
 - [x] `normalize_dataframe()` 已支持 `promote_first_row_to_header=True`
 - [x] 扫描件 DataFrame 已可通过首行提升得到 `序号`、`分项`、`澄清项`、`回复`
 - [x] 已对比当前扫描件表格与指定 DOCX 5 张表的列名
+- [x] 新增 `core/table_matcher.py`
+- [x] 新增 `rank_base_table_candidates()`，用于对 `scan_df` 和候选 `base_df` 做确定性表级匹配排序
+- [x] 匹配分数包含 `column_score`、`text_score`、`shape_score`、`key_overlap_score`
+- [x] 匹配决策包含 `auto_match`、`needs_review`、`no_match`
+- [x] 自测通过：同一 DOCX 表匹配自身得到 `auto_match`
+- [x] 当前扫描件表 `序号/分项/澄清项/回复` 对指定 DOCX 5 张表均为 `no_match`
+- [x] 新增原生文档表格统一入口：`extract_tables_from_native_document_with_metadata()`
+- [x] 新增原生文档批量入口：`extract_tables_from_native_documents_with_metadata()`
+- [x] 已用关键词命中文档进行批量候选排序，最高候选仍为 `no_match`
+- [x] 明确当前阶段不实现 RAG
+- [x] 明确当前优先方向是确定性 `table_matcher`、用户确认的 `column_mapping` 和后续 `evidence_index`
 
 ## Next
 
-- [ ] 保持现有 PDF 表格提取函数不变，避免影响已验证路径
-- [ ] 确认当前扫描件表格对应的原生电子稿表格来源
-- [ ] 将匹配的 DOCX/PDF 表格作为 `base_df` 接入 `normalize_dataframe()`
-- [ ] 对比匹配后的 `scan_df` 与 `base_df` 的列名、行数、主键列和空白单元格
-- [ ] 手动确认 `key_columns` 和 `numeric_columns`
+- [ ] 准备一份受控实际文档测试集：1 张扫描件图片 + 一批候选电子稿 DOCX/PDF
+- [ ] 将候选电子稿统一放入 `data/base_docs/`
+- [ ] 将扫描件预处理图片统一放入 `data/output/real_scan_tuning/`
+- [ ] 批量读取更多电子稿 DOCX/PDF 表格，扩大 `base_df` 候选池
+- [ ] 使用 `extract_tables_from_native_documents_with_metadata()` 批量提取候选原生表格
+- [ ] 使用 `rank_native_table_candidates()` 对当前扫描件表格进行 Top-K 候选排序
+- [ ] 输出 Top-K 候选，包括 `score`、`decision`、`column_score`、`text_score`、`shape_score`、`key_overlap_score`、`base_source_file`、`base_table_index` 和 `base_shape`
+- [ ] 检查 Top-K 候选中是否存在真实来源表格
+- [ ] 如果 Top-K 仍全部为 `no_match`，排查扫描件是否来自其他电子稿、附件、补遗、澄清回复文件或人工整理表
+- [ ] 如果 Top-K 候选列名相近但不完全一致，设计用户确认的确定性 `column_aliases`
+- [ ] 若用户确认 `column_aliases`，再实现或启用 `core/column_mapping.py`
+- [ ] 确认最终匹配的 `base_df` 后，手动确认 `key_columns` 和 `numeric_columns`
 - [ ] 运行最小 `compare_cells_with_tolerance()` 对齐测试
-- [ ] 如果列名不一致，优先设计确定性 `core/column_mapping.py`，不要修改 `align_compare.py`
-- [ ] PDF 跨页续表合并逻辑后置处理，不阻塞当前 DOCX base 路线
+- [ ] 若对齐结果合理，设计确定性 `core/evidence_index.py`
+- [ ] `evidence_index.py` 应将 diff 追溯到 `source_file`、`source_page`、`source_table`、`source_row`、`column_name`、`raw_html`、`cell_box_list` 或原始 DataFrame 行
+- [ ] PDF 跨页续表合并逻辑后置处理，不阻塞当前 DOCX/base candidate 路线
 - [ ] 最后再接入 `main.py` 完整 pipeline
 - [ ] 完整 pipeline 稳定后，再设计报告导出格式
+- [ ] 只有在 deterministic report 和 evidence index 稳定后，才考虑只读 QA 层；当前不做 RAG
 
 ## Current Focus
 
-当前阶段重点是把原生电子稿 DOCX 作为稳定 `base_df` 来源，先打通：
+当前阶段重点不是 RAG，也不是继续调 PaddleOCR 或红章参数，而是构建确定性的候选表格定位流程：
 
 ```text
-DOCX table
-        ↓
-extract_tables_from_native_docx_with_metadata()
-        ↓
-base_df
+scan_df
         ↓
 normalize_dataframe()
         ↓
-scan_df / base_df key_columns 对齐
+batch extract native DOCX/PDF tables
+        ↓
+base_df candidate pool
+        ↓
+rank_native_table_candidates()
+        ↓
+Top-K deterministic table matching
+        ↓
+user-confirmed base_df
+        ↓
+key_columns / numeric_columns confirmation
         ↓
 compare_cells_with_tolerance()
 ```
 
-PDF 原生表格提取当前作为诊断和追溯参考。由于 PDF 跨页表会被拆成多个片段，续页表头继承和同结构续表合并暂不作为当前最小通路的阻塞项。
+当前最小目标是完成：
+
+```text
+实际扫描件表格
+        ↓
+实际电子稿候选池
+        ↓
+Top-K 表格来源定位
+        ↓
+人工确认 base_df
+        ↓
+最小 deterministic comparison
+```
+
+## RAG Decision
+
+当前阶段不实现 RAG。
+
+原因：
+
+- 当前项目核心任务是确定性工程审计比对，不是知识问答生成
+- RAG 容易引入字段语义猜测、表格内容补全和不可追溯判断
+- `PROJECT_RULES.md` 和 `AGENTS.md` 已明确禁止 LLM 参与最终审计数据生成、字段匹配、金额判断和篡改判定
+- 当前真正需要的是确定性证据链索引，而不是生成式检索问答
+
+允许的未来方向是：
+
+```text
+compare result
+        ↓
+evidence_index
+        ↓
+read-only QA / explanation layer
+```
+
+禁止的方向是：
+
+```text
+OCR / PDF extraction
+        ↓
+RAG
+        ↓
+LLM decides field matching, missing values, amount equality, or tampering
+```
+
+因此，当前优先级为：
+
+```text
+table_matcher.py
+        ↓
+column_mapping.py, if user-confirmed
+        ↓
+evidence_index.py
+        ↓
+report_generator.py
+        ↓
+optional read-only QA
+```
 
 ## Test Commands
 
@@ -86,28 +169,53 @@ python -c "from core.pre_processing import preprocess_pipeline, remove_red_seal,
 python -c "from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata, inspect_structure_output; print('ocr_engine import ok')"
 ```
 
-测试 DOCX 文件是否含表格：
+测试原生文档解析 import：
 
 ```powershell
-python -c "import docx; p=r'E:\2026huinengyousuan\东生活1号监理\电子稿\1.-合同协议书-宁波东方理工大学（暂名）校园建设项目永久校区1号地块及2号地块-二期（东生活组团-1）工程监理2023.8.17.docx'; d=docx.Document(p); print('tables:', len(d.tables)); [print(i, len(t.rows), max((len(r.cells) for r in t.rows), default=0), [c.text.strip().replace('\n',' ')[:30] for c in t.rows[0].cells] if t.rows else []) for i,t in enumerate(d.tables)]"
+python -c "from core.text_parser import extract_tables_from_native_document_with_metadata, extract_tables_from_native_documents_with_metadata; print('text_parser import ok')"
+```
+
+测试 table matcher import：
+
+```powershell
+python -c "from core.table_matcher import rank_base_table_candidates, rank_native_table_candidates; print('table_matcher import ok')"
+```
+
+检查实际输入文件：
+
+```powershell
+Get-ChildItem data/output/real_scan_tuning
+Get-ChildItem data/base_docs
 ```
 
 测试扫描件表格提取：
 
 ```powershell
-python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; img = next(Path('data/output/real_scan_tuning').glob('*.png')); print('image:', img); engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); tables = extract_tables_with_metadata(blocks); print('tables:', len(tables)); print(tables[0]['source_style'] if tables else 'no table'); print(tables[0]['df'].head() if tables else 'no table')"
+python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); print('image_count:', len(imgs)); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; img = imgs[0]; print('image:', img); engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); tables = extract_tables_with_metadata(blocks); print('scan tables:', len(tables)); print(tables[0]['df'].shape if tables else 'no table'); print(tables[0]['df'].head() if tables else 'no table')"
 ```
 
 测试扫描件 DataFrame 首行表头提升：
 
 ```powershell
-python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.data_normalize import normalize_dataframe; img = next(Path('data/output/real_scan_tuning').glob('*.png')); engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); df = extract_tables_with_metadata(blocks)[0]['df']; promoted = df.iloc[1:].copy(); promoted.columns = [str(x).strip() for x in df.iloc[0].tolist()]; promoted = normalize_dataframe(promoted, key_columns=['序号']); print(promoted.columns.tolist()); print(promoted.head())"
+python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.data_normalize import normalize_dataframe; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; img = imgs[0]; engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); df = extract_tables_with_metadata(blocks)[0]['df']; promoted = normalize_dataframe(df, key_columns=['序号'], promote_first_row_to_header=True); print(promoted.columns.tolist()); print(promoted.shape); print(promoted.head())"
 ```
 
-后续实现 DOCX 表格提取后，测试命令应使用：
+测试候选电子稿表格批量提取：
 
 ```powershell
-python -c "from core.text_parser import extract_tables_from_native_docx_with_metadata; p=r'E:\2026huinengyousuan\东生活1号监理\电子稿\1.-合同协议书-宁波东方理工大学（暂名）校园建设项目永久校区1号地块及2号地块-二期（东生活组团-1）工程监理2023.8.17.docx'; tables = extract_tables_from_native_docx_with_metadata(p); print('tables:', len(tables)); [print(i, t['df'].shape, t['df'].columns.tolist(), t['df'].head(2)) for i,t in enumerate(tables)]"
+python -c "from pathlib import Path; from core.text_parser import extract_tables_from_native_documents_with_metadata; files = list(Path('data/base_docs').glob('*.docx')) + list(Path('data/base_docs').glob('*.pdf')); print('files:', len(files)); assert files, 'No DOCX/PDF found in data/base_docs/'; tables = extract_tables_from_native_documents_with_metadata([str(p) for p in files]); print('base tables:', len(tables)); [print(i, t['df'].shape, t.get('source_file',''), t.get('table_index',''), t['df'].columns.tolist()) for i,t in enumerate(tables[:10])]"
+```
+
+测试 Top-K 表格候选匹配：
+
+```powershell
+python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.data_normalize import normalize_dataframe; from core.table_matcher import rank_native_table_candidates; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); files = list(Path('data/base_docs').glob('*.docx')) + list(Path('data/base_docs').glob('*.pdf')); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; assert files, 'No DOCX/PDF found in data/base_docs/'; img = imgs[0]; engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); scan_df = extract_tables_with_metadata(blocks)[0]['df']; scan_df = normalize_dataframe(scan_df, key_columns=['序号'], promote_first_row_to_header=True); ranked = rank_native_table_candidates(scan_df, [str(p) for p in files], key_columns=['序号'], top_k=10); cols = ['score','decision','column_score','text_score','shape_score','key_overlap_score','base_source_file','base_table_index','base_shape']; print(ranked[cols] if not ranked.empty else 'no candidates')"
+```
+
+最小 scan/base 对齐测试：
+
+```powershell
+python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.text_parser import extract_tables_from_native_documents_with_metadata; from core.data_normalize import normalize_dataframe; from core.table_matcher import rank_base_table_candidates; from core.align_compare import compare_cells_with_tolerance; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); files = list(Path('data/base_docs').glob('*.docx')) + list(Path('data/base_docs').glob('*.pdf')); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; assert files, 'No DOCX/PDF found in data/base_docs/'; img = imgs[0]; engine = build_pp_structure(use_gpu=False); scan_df = extract_tables_with_metadata(parse_layout_to_blocks(engine, str(img)))[0]['df']; scan_df = normalize_dataframe(scan_df, key_columns=['序号'], promote_first_row_to_header=True); base_tables = extract_tables_from_native_documents_with_metadata([str(p) for p in files]); ranked = rank_base_table_candidates(scan_df, base_tables, key_columns=['序号'], top_k=1); assert not ranked.empty, 'No ranked base candidate'; print(ranked[['score','decision','base_source_file','base_table_index','base_shape']]); source = ranked.iloc[0]['base_source_file']; idx = int(ranked.iloc[0]['base_table_index']); candidates = [t for t in base_tables if t.get('source_file') == source and int(t.get('table_index', -1)) == idx]; assert candidates, 'Matched base table not found'; base_df = normalize_dataframe(candidates[0]['df'], key_columns=['序号']); diff = compare_cells_with_tolerance(base_df, scan_df, key_columns=['序号'], max_distance=2); print('matched source:', source); print('matched table:', idx); print('diff rows:', len(diff)); print(diff.head())"
 ```
 
 ## Notes
@@ -120,7 +228,9 @@ core/column_mapping.py
 
 列名映射必须是确定性规则，不允许使用 LLM 猜测字段对应关系。
 
-当前已验证：PDF 版本可提取大量表格片段，但跨页续表会造成假差异；DOCX 版本表格结构更干净，因此下一阶段优先实现 DOCX 表格提取。
+如果 `rank_native_table_candidates()` 的 Top-K 仍全部为 `no_match`，优先扩大 `data/base_docs/` 中的电子稿候选池，而不是调整阈值或使用 RAG。
+
+如果真实扫描件来自附件、补遗、澄清回复文件或人工整理表，应将这些文件加入 `data/base_docs/` 后重新运行候选排序。
 
 ## Table Matcher Progress
 
@@ -133,4 +243,6 @@ core/column_mapping.py
 - [x] 新增原生文档表格统一入口：`extract_tables_from_native_document_with_metadata()`
 - [x] 新增原生文档批量入口：`extract_tables_from_native_documents_with_metadata()`
 - [x] 已用关键词命中文档进行批量候选排序，最高候选仍为 `no_match`
-- [ ] 下一步：批量读取更多电子稿表格，使用 `rank_base_table_candidates()` 定位扫描件表格来源
+- [ ] 下一步：批量读取更多电子稿 DOCX/PDF 表格，使用 `rank_native_table_candidates()` 输出 Top-K 候选，定位当前扫描件表格的真实 `base_df` 来源
+- [ ] 若 Top-K 仍全部为 `no_match`，排查扫描件是否来自其他电子稿、附件、补遗、澄清回复文件或人工整理表
+- [ ] 暂不使用 RAG 定位表格来源；表格来源定位必须通过确定性候选排序和用户确认完成

@@ -30,12 +30,18 @@ The main pipeline is:
 candidate document
         vs
 baseline document
-        鈫?document_parser
-        鈫?page_aligner
-        鈫?content_compare
-        鈫?table_compare, only when needed
-        鈫?evidence_index
-        鈫?traceable report
+        ↓
+document_parser
+        ↓
+page_aligner
+        ↓
+content_compare
+        ↓
+table_compare, only when needed
+        ↓
+evidence_index
+        ↓
+traceable report
 ```
 
 The system must extract, normalize, align, compare, and report differences across complete engineering documents, including pages, paragraphs, titles, tables, images, signatures, headers, footers, attachments, blank pages, and layout regions.
@@ -162,9 +168,9 @@ Forbidden strategy:
 
 ```text
 HSV red mask
-        鈫?
+        ↓
 dilate red mask
-        鈫?
+        ↓
 set masked pixels to white
 ```
 
@@ -216,15 +222,15 @@ Table extraction route:
 
 ```text
 PPStructureV3.predict()
-        鈫?
+        ↓
 LayoutParsingResultV2
-        鈫?
+        ↓
 table_res_list
-        鈫?
+        ↓
 pred_html
-        鈫?
+        ↓
 pd.read_html(StringIO(pred_html))
-        鈫?
+        ↓
 pandas.DataFrame
 ```
 
@@ -343,9 +349,9 @@ Example:
 
 ```python
 column_aliases = {
-    "椤圭洰鍚嶇О": "鍒嗛」",
-    "婢勬竻鍐呭": "婢勬竻椤?,
-    "绛斿": "鍥炲",
+    "项目名称": "分项",
+    "澄清内容": "澄清项",
+    "答复": "回复",
 }
 ```
 
@@ -457,7 +463,7 @@ python -c "from pathlib import Path; from core.ocr_engine import build_pp_struct
 Test scanned DataFrame normalization:
 
 ```powershell
-python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.data_normalize import normalize_dataframe; img = next(Path('data/output/real_scan_tuning').glob('*.png')); engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); tables = extract_tables_with_metadata(blocks); df = tables[0]['df']; ndf = normalize_dataframe(df, key_columns=['搴忓彿']); print(ndf.head()); print(ndf.columns.tolist())"
+python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.data_normalize import normalize_dataframe; img = next(Path('data/output/real_scan_tuning').glob('*.png')); engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); tables = extract_tables_with_metadata(blocks); df = tables[0]['df']; ndf = normalize_dataframe(df, key_columns=['序号']); print(ndf.head()); print(ndf.columns.tolist())"
 ```
 
 Test native PDF table extraction:
@@ -471,7 +477,7 @@ python -c "from pathlib import Path; from core.text_parser import extract_tables
 Minimal scan/base comparison test:
 
 ```powershell
-python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.text_parser import extract_tables_from_native_pdf; from core.data_normalize import normalize_dataframe; from core.align_compare import compare_cells_with_tolerance; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); pdfs = list(Path('data/base_docs').glob('*.pdf')); print('image_count:', len(imgs)); print('pdf_count:', len(pdfs)); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; assert pdfs, 'No PDF found in data/base_docs/'; img = imgs[0]; pdf = pdfs[0]; engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); scan_df = extract_tables_with_metadata(blocks)[0]['df']; base_df = extract_tables_from_native_pdf(str(pdf))[0]; scan_df = normalize_dataframe(scan_df, key_columns=['搴忓彿']); base_df = normalize_dataframe(base_df, key_columns=['搴忓彿']); diff = compare_cells_with_tolerance(base_df, scan_df, key_columns=['搴忓彿'], max_distance=2); print('diff rows:', len(diff)); print(diff.head())"
+python -c "from pathlib import Path; from core.ocr_engine import build_pp_structure, parse_layout_to_blocks, extract_tables_with_metadata; from core.text_parser import extract_tables_from_native_pdf; from core.data_normalize import normalize_dataframe; from core.align_compare import compare_cells_with_tolerance; imgs = list(Path('data/output/real_scan_tuning').glob('*.png')); pdfs = list(Path('data/base_docs').glob('*.pdf')); print('image_count:', len(imgs)); print('pdf_count:', len(pdfs)); assert imgs, 'No PNG found in data/output/real_scan_tuning/'; assert pdfs, 'No PDF found in data/base_docs/'; img = imgs[0]; pdf = pdfs[0]; engine = build_pp_structure(use_gpu=False); blocks = parse_layout_to_blocks(engine, str(img)); scan_df = extract_tables_with_metadata(blocks)[0]['df']; base_df = extract_tables_from_native_pdf(str(pdf))[0]; scan_df = normalize_dataframe(scan_df, key_columns=['序号']); base_df = normalize_dataframe(base_df, key_columns=['序号']); diff = compare_cells_with_tolerance(base_df, scan_df, key_columns=['序号'], max_distance=2); print('diff rows:', len(diff)); print(diff.head())"
 ```
 
 ## Decision Rules

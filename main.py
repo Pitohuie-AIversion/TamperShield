@@ -5,6 +5,7 @@ import pandas as pd
 
 from core.align_compare import compare_cells_with_tolerance
 from core.data_normalize import normalize_dataframe
+from core.evidence_index import EvidenceIndex
 from core.ocr_engine import (
     build_pp_structure,
     extract_tables_to_dataframes,
@@ -123,5 +124,39 @@ def run_tamper_shield_pipeline(
     return diff_report
 
 
+def run_document_first_pipeline(
+    candidate_file: str,
+    baseline_file: str,
+    key_columns: Optional[Sequence[str]] = None,
+    numeric_columns: Optional[Sequence[str]] = None,
+    page_match_threshold: float = 0.75,
+    page_low_confidence_threshold: float = 0.45,
+    page_search_window: int = 2,
+    page_text_similarity_threshold: float = 0.98,
+) -> EvidenceIndex:
+    """
+    Run the Document-first in-memory comparison pipeline.
+
+    This function does not write files, export reports, run OCR preprocessing,
+    or replace the legacy table-first pipeline. It returns an EvidenceIndex.
+    """
+    from core.document_pipeline import compare_documents
+
+    return compare_documents(
+        candidate_file=candidate_file,
+        baseline_file=baseline_file,
+        key_columns=key_columns,
+        numeric_columns=numeric_columns,
+        page_match_threshold=page_match_threshold,
+        page_low_confidence_threshold=page_low_confidence_threshold,
+        page_search_window=page_search_window,
+        page_text_similarity_threshold=page_text_similarity_threshold,
+    )
+
+
 if __name__ == "__main__":
-    print("Pipeline entry is ready. Call run_tamper_shield_pipeline(...) with explicit output paths.")
+    print(
+        "Pipeline entries are ready. "
+        "Use run_tamper_shield_pipeline(...) for the legacy table-first flow, "
+        "or run_document_first_pipeline(...) for the Document-first flow."
+    )

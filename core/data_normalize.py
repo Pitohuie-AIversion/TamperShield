@@ -53,11 +53,21 @@ def normalize_dataframe(
     key_columns: Optional[Sequence[str]] = None,
     numeric_columns: Optional[Iterable[str]] = None,
     ffill_keys: bool = True,
+    promote_first_row_to_header: bool = False,
 ) -> pd.DataFrame:
     normalized = df.copy()
 
     normalized.columns = [normalize_column_name(col) for col in normalized.columns]
     normalized = normalized.fillna("")
+
+    if promote_first_row_to_header and not normalized.empty:
+        header = [
+            normalize_column_name(value)
+            for value in normalized.iloc[0].tolist()
+        ]
+        normalized = normalized.iloc[1:].copy()
+        normalized.columns = header
+        normalized = normalized.reset_index(drop=True)
 
     for col in normalized.columns:
         normalized[col] = normalized[col].map(normalize_text_cell)

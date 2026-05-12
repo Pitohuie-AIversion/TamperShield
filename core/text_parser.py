@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, Iterable, List
 
 import docx
 import fitz
@@ -34,6 +34,20 @@ def extract_text_from_docx(docx_path: str) -> str:
     return "\n".join(p.text for p in document.paragraphs).strip()
 
 
+def _extract_docx_table_rows(table: docx.table.Table) -> List[List[str]]:
+    rows: List[List[str]] = []
+
+    for row in table.rows:
+        rows.append(
+            [
+                cell.text.strip().replace("\n", " ")
+                for cell in row.cells
+            ]
+        )
+
+    return rows
+
+
 def detect_file_type(file_path: str) -> str:
     suffix = Path(file_path).suffix.lower()
 
@@ -44,6 +58,15 @@ def detect_file_type(file_path: str) -> str:
         return "docx"
 
     raise ValueError(f"Unsupported file type: {suffix}")
+
+
+def is_supported_native_document(file_path: str) -> bool:
+    path = Path(file_path)
+
+    if path.name.startswith("~$"):
+        return False
+
+    return path.suffix.lower() in {".pdf", ".docx"}
 
 
 def extract_tables_from_native_pdf_with_metadata(pdf_path: str) -> List[Dict[str, object]]:
@@ -91,4 +114,83 @@ def extract_tables_from_native_pdf_with_metadata(pdf_path: str) -> List[Dict[str
 
 def extract_tables_from_native_pdf(pdf_path: str) -> List[pd.DataFrame]:
     tables = extract_tables_from_native_pdf_with_metadata(pdf_path)
+    return [item["df"] for item in tables]
+
+
+def extract_tables_from_native_docx_with_metadata(
+    docx_path: str,
+) -> List[Dict[str, object]]:
+    tables: List[Dict[str, object]] = []
+    document = docx.Document(docx_path)
+
+    for table_index, table in enumerate(document.tables):
+        raw_rows = _extract_docx_table_rows(table)
+
+        if len(raw_rows) <= 1:
+            continue
+
+        header = raw_rows[0]
+        rows = raw_rows[1:]
+
+        df = pd.DataFrame(rows, columns=header)
+        df = normalize_dataframe(df)
+        df = attach_source_metadata(
+            df,
+            source_file=docx_path,
+            table_index=table_index,
+        )
+
+        tables.append(
+            {
+                "df": df,
+                "source_file": docx_path,
+                "table_index": table_index,
+            }
+        )
+
+    return tables
+
+
+def extract_tables_from_native_docx(docx_path: str) -> List[pd.DataFrame]:
+    tables = extract_tables_from_native_docx_with_metadata(docx_path)
+    return [item["df"] for item in tables]
+
+
+def extract_tables_from_native_document_with_metadata(
+    file_path: str,
+) -> List[Dict[str, object]]:
+    file_type = detect_file_type(file_path)
+
+    if file_type == "pdf":
+        return extract_tables_from_native_pdf_with_metadata(file_path)
+
+    if file_type == "docx":
+        return extract_tables_from_native_docx_with_metadata(file_path)
+
+    raise ValueError(f"Unsupported file type: {file_type}")
+
+
+def extract_tables_from_native_document(file_path: str) -> List[pd.DataFrame]:
+    tables = extract_tables_from_native_document_with_metadata(file_path)
+    return [item["df"] for item in tables]
+
+
+def extract_tables_from_native_documents_with_metadata(
+    file_paths: Iterable[str],
+) -> List[Dict[str, object]]:
+    tables: List[Dict[str, object]] = []
+
+    for file_path in file_paths:
+        if not is_supported_native_document(file_path):
+            continue
+
+        tables.extend(extract_tables_from_native_document_with_metadata(file_path))
+
+    return tables
+
+
+def extract_tables_from_native_documents(
+    file_paths: Iterable[str],
+) -> List[pd.DataFrame]:
+    tables = extract_tables_from_native_documents_with_metadata(file_paths)
     return [item["df"] for item in tables]

@@ -177,6 +177,7 @@ overwrite
 写入阻断测试：
 
 ```powershell
+
 python -c "from core.report_generator import write_text_report; import tempfile; from pathlib import Path; p=Path(tempfile.gettempdir())/'tamper_report_test.md';\
 try:\
     write_text_report('test', p, allow_write=False)\

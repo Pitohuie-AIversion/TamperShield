@@ -132,6 +132,10 @@ Rules for Phase 10:
 - Do not use LLMs to judge document tampering, field correspondence, missing values, or amount equality.
 ```
 
+Phase 11e confirmed that DOCX pagination should prefer LibreOffice rendered-PDF parsing when available. If rendered PDF parsing succeeds, validation should use the rendered page count rather than the native single-page fallback.
+
+When `requires_table_compare_count=0` after rendered-PDF parsing, do not assume there are no tables in the original DOCX. It may mean that table elements were not preserved as table elements after rendering to PDF.
+
 Do not recreate already completed modules unless explicitly asked.
 
 Before changing code, classify the change as one of:

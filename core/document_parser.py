@@ -7,6 +7,8 @@ cell comparison, evidence indexing, or report generation.
 """
 
 from pathlib import Path
+import subprocess
+import tempfile
 from typing import Any
 
 import fitz
@@ -142,6 +144,23 @@ def parse_pdf_document(file_path: str | Path) -> ParsedDocument:
 
 
 def parse_docx_document(file_path: str | Path) -> ParsedDocument:
+    """Parse DOCX with rendered-PDF pagination when available.
+
+    Falls back to native single-page parsing when rendering is unavailable.
+    """
+    path = Path(file_path)
+
+    try:
+        return _parse_docx_via_rendered_pdf(path)
+    except Exception as exc:
+        parsed = _parse_docx_native_single_page(path)
+        parsed.metadata["pagination"] = "native_single_page_fallback"
+        parsed.metadata["pagination_fallback_reason"] = type(exc).__name__
+        parsed.metadata["pagination_fallback_message"] = str(exc)
+        return parsed
+
+
+def _parse_docx_native_single_page(file_path: str | Path) -> ParsedDocument:
     """Parse DOCX native paragraphs and tables into a single logical page."""
     path = Path(file_path)
     doc = Document(str(path))
@@ -151,7 +170,7 @@ def parse_docx_document(file_path: str | Path) -> ParsedDocument:
             "source_file": str(path),
             "source_format": "docx",
             "page_index": 0,
-            "pagination": "not_available_in_phase_3",
+            "pagination": "not_available_native_docx",
         },
     )
 
@@ -169,6 +188,7 @@ def parse_docx_document(file_path: str | Path) -> ParsedDocument:
                 metadata={
                     "source_file": str(path),
                     "source_format": "docx",
+                    "pagination": "not_available_native_docx",
                     "paragraph_index": paragraph_index,
                 },
             )
@@ -190,6 +210,7 @@ def parse_docx_document(file_path: str | Path) -> ParsedDocument:
                 metadata={
                     "source_file": str(path),
                     "source_format": "docx",
+                    "pagination": "not_available_native_docx",
                     "table_index": table_index,
                 },
             )
@@ -207,8 +228,86 @@ def parse_docx_document(file_path: str | Path) -> ParsedDocument:
         metadata={
             "source_file": str(path),
             "source_format": "docx",
+            "pagination": "not_available_native_docx",
         },
     )
+
+
+def _convert_docx_to_pdf_with_libreoffice(
+    docx_path: Path,
+    output_dir: Path,
+) -> Path:
+    """Convert a DOCX file to PDF in a temporary directory with LibreOffice."""
+    errors: list[str] = []
+    for executable in ("soffice", "libreoffice"):
+        command = [
+            executable,
+            "--headless",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(output_dir),
+            str(docx_path),
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            errors.append(f"{executable}: {exc}")
+            continue
+
+        expected_pdf = output_dir / f"{docx_path.stem}.pdf"
+        if result.returncode == 0 and expected_pdf.exists():
+            return expected_pdf
+
+        generated_pdfs = sorted(output_dir.glob("*.pdf"))
+        if result.returncode == 0 and generated_pdfs:
+            return generated_pdfs[0]
+
+        errors.append(
+            (
+                f"{executable}: returncode={result.returncode}; "
+                f"stdout={result.stdout.strip()}; "
+                f"stderr={result.stderr.strip()}"
+            )
+        )
+
+    raise RuntimeError("DOCX to PDF conversion failed: " + " | ".join(errors))
+
+
+def _parse_docx_via_rendered_pdf(file_path: str | Path) -> ParsedDocument:
+    """Render DOCX to a temporary PDF and parse PDF-like pages."""
+    original_path = Path(file_path)
+    with tempfile.TemporaryDirectory() as temporary_dir:
+        output_dir = Path(temporary_dir)
+        rendered_pdf_path = _convert_docx_to_pdf_with_libreoffice(
+            original_path,
+            output_dir,
+        )
+        rendered_pdf_doc = parse_pdf_document(rendered_pdf_path)
+
+        metadata = {
+            "source_file": str(original_path),
+            "source_format": "docx",
+            "pagination": "rendered_pdf",
+            "render_backend": "libreoffice",
+            "rendered_pdf_page_count": len(rendered_pdf_doc.pages),
+        }
+        for page in rendered_pdf_doc.pages:
+            page.metadata.update(metadata)
+            for element in page.elements:
+                element.metadata.update(metadata)
+
+        return ParsedDocument(
+            file_path=str(original_path),
+            file_type="docx",
+            pages=rendered_pdf_doc.pages,
+            metadata=metadata,
+        )
 
 
 def parse_image_document(file_path: str | Path) -> ParsedDocument:

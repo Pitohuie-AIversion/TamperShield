@@ -178,6 +178,11 @@ def _append_record_markdown(lines: list[str], record: EvidenceRecord) -> None:
             f"- Baseline element: {record.baseline_element_id}",
             f"- Message: {record.message}",
             "",
+        ]
+    )
+    _append_review_context_markdown(lines, record_dict)
+    lines.extend(
+        [
             "Metadata:",
             "",
             "```json",
@@ -186,3 +191,78 @@ def _append_record_markdown(lines: list[str], record: EvidenceRecord) -> None:
             "",
         ]
     )
+
+
+def _append_review_context_markdown(
+    lines: list[str],
+    record_dict: dict[str, Any],
+) -> None:
+    metadata = record_dict.get("metadata", {})
+    if not isinstance(metadata, dict):
+        return
+
+    has_review_context = "page_issue_category" in metadata
+    page_profile = metadata.get("page_profile")
+    has_page_profile = isinstance(page_profile, dict)
+
+    if not has_review_context and not has_page_profile:
+        return
+
+    if has_review_context:
+        lines.extend(["Review context:", ""])
+        _append_optional_metadata_line(
+            lines=lines,
+            label="Page issue category",
+            value=metadata.get("page_issue_category"),
+        )
+        _append_optional_metadata_line(
+            lines=lines,
+            label="Suggested review severity",
+            value=metadata.get("suggested_review_severity"),
+        )
+        _append_optional_metadata_line(
+            lines=lines,
+            label="Classification reason",
+            value=metadata.get("classification_reason"),
+        )
+        lines.append("")
+
+    if has_page_profile:
+        lines.extend(["Page profile:", ""])
+        _append_optional_metadata_line(
+            lines=lines,
+            label="Text length",
+            value=page_profile.get("text_length"),
+        )
+        _append_optional_metadata_line(
+            lines=lines,
+            label="Is blank",
+            value=page_profile.get("is_blank"),
+        )
+        _append_optional_metadata_line(
+            lines=lines,
+            label="Element count",
+            value=page_profile.get("element_count"),
+        )
+        element_counts = page_profile.get("element_type_counts")
+        if element_counts is not None:
+            lines.append(
+                "- Element type counts: "
+                f"{json.dumps(element_counts, ensure_ascii=False)}"
+            )
+        _append_optional_metadata_line(
+            lines=lines,
+            label="Text preview",
+            value=page_profile.get("text_preview"),
+        )
+        lines.append("")
+
+
+def _append_optional_metadata_line(
+    lines: list[str],
+    label: str,
+    value: Any,
+) -> None:
+    if value is None:
+        return
+    lines.append(f"- {label}: {value}")

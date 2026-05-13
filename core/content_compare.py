@@ -181,26 +181,38 @@ def compare_page(
     baseline_page = alignment.baseline_page
 
     if alignment.status == "candidate_added" and candidate_page is not None:
+        metadata = _alignment_metadata(alignment)
+        metadata.update(_page_profile(candidate_page))
+        metadata.update(_classify_unmatched_page(candidate_page))
         return [
             Difference(
                 diff_type="page_added",
                 severity="high",
                 candidate_page=candidate_page.page_number,
                 baseline_page=None,
-                message="Candidate document contains an added page.",
-                metadata=_alignment_metadata(alignment),
+                message=(
+                    "Candidate document contains an added page; see "
+                    "page_issue_category metadata for review context."
+                ),
+                metadata=metadata,
             )
         ]
 
     if alignment.status == "baseline_deleted" and baseline_page is not None:
+        metadata = _alignment_metadata(alignment)
+        metadata.update(_page_profile(baseline_page))
+        metadata.update(_classify_unmatched_page(baseline_page))
         return [
             Difference(
                 diff_type="page_deleted",
                 severity="high",
                 candidate_page=None,
                 baseline_page=baseline_page.page_number,
-                message="Baseline page is missing from the candidate document.",
-                metadata=_alignment_metadata(alignment),
+                message=(
+                    "Baseline page is missing from the candidate document; see "
+                    "page_issue_category metadata for review context."
+                ),
+                metadata=metadata,
             )
         ]
 
@@ -276,6 +288,119 @@ def _preview(text: str) -> str:
 
 def _element_type_counts(page: DocumentPage) -> Counter[str]:
     return Counter(element.element_type for element in page.elements)
+
+
+def _page_profile(page: DocumentPage) -> dict[str, object]:
+    text = _page_text(page)
+    return {
+        "page_profile": {
+            "text_length": len(text),
+            "is_blank": page.is_blank(),
+            "element_count": len(page.elements),
+            "element_type_counts": dict(_element_type_counts(page)),
+            "text_preview": _preview(text),
+        }
+    }
+
+
+def _classify_unmatched_page(page: DocumentPage) -> dict[str, object]:
+    text = _page_text(page)
+    text_length = len(text)
+
+    if _looks_like_page_number_residue(text, text_length):
+        return {
+            "page_issue_category": "likely_page_number_residue",
+            "suggested_review_severity": "low",
+            "classification_reason": "Short page text appears to contain only page-number residue.",
+        }
+
+    if _looks_like_toc_or_cover(page, text):
+        return {
+            "page_issue_category": "likely_toc_or_cover_format_noise",
+            "suggested_review_severity": "medium",
+            "classification_reason": "Page text and page position suggest table-of-contents or cover formatting differences.",
+        }
+
+    if _looks_like_short_signature_or_date_page(text, text_length):
+        return {
+            "page_issue_category": "likely_short_signature_or_date_page",
+            "suggested_review_severity": "low",
+            "classification_reason": "Short page text contains signature, stamp, representative, or date markers.",
+        }
+
+    if page.is_blank() or text_length <= 5:
+        return {
+            "page_issue_category": "likely_blank_or_near_blank",
+            "suggested_review_severity": "low",
+            "classification_reason": "Page is blank or contains near-blank normalized text.",
+        }
+
+    if _looks_like_attachment_start_page(text):
+        return {
+            "page_issue_category": "likely_attachment_start_page_needs_manual_review",
+            "suggested_review_severity": "high",
+            "classification_reason": "Page text suggests an attachment or commitment document start.",
+        }
+
+    if text_length <= 150:
+        return {
+            "page_issue_category": "likely_pagination_split_noise",
+            "suggested_review_severity": "medium",
+            "classification_reason": "Short unmatched page may be caused by pagination splitting.",
+        }
+
+    return {
+        "page_issue_category": "unknown_needs_manual_review",
+        "suggested_review_severity": "high",
+        "classification_reason": "Unmatched page does not match deterministic low-noise page categories.",
+    }
+
+
+def _looks_like_page_number_residue(text: str, text_length: int) -> bool:
+    if text_length > 30:
+        return False
+
+    lowered = text.lower()
+    if "page" in lowered:
+        return True
+
+    if re.search(r"第\s*\d+\s*页", text):
+        return True
+
+    return "第" in text and "页" in text and "共" in text
+
+
+def _looks_like_toc_or_cover(page: DocumentPage, text: str) -> bool:
+    keywords = ("目录", "合同协议书", "监理人", "代建人", "发包人")
+    if "目录" in text:
+        return True
+
+    return page.page_number <= 3 and any(keyword in text for keyword in keywords)
+
+
+def _looks_like_short_signature_or_date_page(text: str, text_length: int) -> bool:
+    if text_length > 80:
+        return False
+
+    keywords = (
+        "签字",
+        "盖章",
+        "日期",
+        "年",
+        "月",
+        "日",
+        "法定代表人",
+        "授权代表",
+        "监理人",
+        "代建人",
+    )
+    return any(keyword in text for keyword in keywords)
+
+
+def _looks_like_attachment_start_page(text: str) -> bool:
+    leading_text = text[:160]
+    keywords = ("附件", "承诺书", "职责", "EHS", "诚信")
+    return any(keyword in leading_text for keyword in keywords)
 
 
 def _element_count_diff_type(

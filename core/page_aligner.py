@@ -61,6 +61,14 @@ def page_similarity(candidate_page: DocumentPage, baseline_page: DocumentPage) -
     return text_similarity(candidate_text, baseline_text)
 
 
+def _is_forward_sequence_match(
+    best_index: int,
+    expected_index: int,
+) -> bool:
+    """Return True when the best match keeps moving forward in baseline order."""
+    return best_index >= expected_index
+
+
 def align_pages(
     candidate_pages: list[DocumentPage],
     baseline_pages: list[DocumentPage],
@@ -104,13 +112,21 @@ def align_pages(
         matched_baseline_indexes.add(best_index)
 
         expected_index = baseline_cursor
+        forward_baseline_skip = max(0, best_index - expected_index)
+        is_forward_sequence_match = _is_forward_sequence_match(
+            best_index=best_index,
+            expected_index=expected_index,
+        )
         if best_score >= match_threshold:
             if best_index == expected_index:
                 status: AlignmentStatus = "matched"
                 reason = "Best baseline page matched the expected sequence position."
+            elif is_forward_sequence_match:
+                status = "matched"
+                reason = "Best baseline page matched a forward sequence position after skipped baseline pages."
             else:
                 status = "possible_reordered"
-                reason = "Best baseline page was outside the expected sequence position."
+                reason = "Best baseline page was before the expected sequence position and may indicate reordering."
         else:
             status = "low_confidence"
             reason = "Best baseline page only reached the low confidence threshold."
@@ -129,6 +145,8 @@ def align_pages(
                     "candidate_page_number": candidate_page.page_number,
                     "baseline_page_number": baseline_page.page_number,
                     "search_window": search_window,
+                    "forward_baseline_skip": forward_baseline_skip,
+                    "is_forward_sequence_match": is_forward_sequence_match,
                 },
             )
         )

@@ -37,6 +37,38 @@ optional Markdown report, only when explicitly allowed
 
 CLI 不得直接调用 parser / aligner / content_compare / table_compare。
 
+## Implementation Boundary
+
+The future CLI must only import and call:
+
+```text
+main.py::run_document_first_pipeline(...)
+```
+
+It must not import or call:
+
+```text
+core.document_parser
+core.page_aligner
+core.content_compare
+core.table_compare
+core.report_generator internals
+core.table_matcher
+core.align_compare
+core.ocr_engine
+core.pre_processing
+```
+
+Allowed imports:
+
+```text
+argparse
+pathlib.Path
+sys
+json, optional
+main.run_document_first_pipeline
+```
+
 ## Proposed Arguments
 
 ```text
@@ -65,6 +97,28 @@ Argument meanings:
 - `--show-records N`: 打印前 N 条 evidence 摘要
 - `--encoding`: 保留参数，默认 `utf-8`，主要用于未来报告查看或输出控制
 
+## Argument Validation Rules
+
+1. If `--auto-discover` is used, `--candidate` and `--baseline` should not be required.
+2. If `--auto-discover` is not used, both `--candidate` and `--baseline` are required.
+3. If `--candidate` is provided but `--baseline` is missing, fail with clear error.
+4. If `--baseline` is provided but `--candidate` is missing, fail with clear error.
+5. If `--report-output` is provided without `--allow-write`, block writing and print:
+
+```text
+[Output Blocked] - Permission Required
+```
+
+6. If `--allow-write` is provided without `--report-output`, fail with clear error.
+7. If report path exists and `--overwrite` is not provided, print:
+
+```text
+[Output Blocked] - Output Exists
+```
+
+8. If `--overwrite` is provided without `--allow-write`, fail with clear error.
+9. `--show-records` must be a non-negative integer.
+
 ## Default Behavior
 
 - 默认只读。
@@ -92,6 +146,21 @@ If the directory contains multiple PDF or DOCX files, the safer behavior is:
 
 If a future demo mode intentionally uses sorted first files, it must print the selected files before running.
 
+## Auto-Discover Rules
+
+When `--auto-discover` is used:
+
+- Search `--input-dir` for `*.pdf` files.
+- Search `--input-dir` for `*.docx` files.
+- If exactly one PDF and exactly one DOCX exist, use them.
+- If zero PDF or zero DOCX exists, fail with clear error.
+- If multiple PDF or multiple DOCX files exist, do not guess.
+- Print candidate file list and ask user to pass `--candidate` / `--baseline` explicitly.
+
+Do not silently choose the first file when multiple files exist.
+
+This is safer than the early demo pattern that used `Path.glob()[0]`.
+
 ## Report Writing Rules
 
 Only write a Markdown report when all conditions are true:
@@ -108,6 +177,20 @@ Failure messages:
 ```
 
 CLI 不得自动生成默认报告路径。
+
+## Exit Code Design
+
+Suggested exit codes:
+
+```text
+0 = success
+1 = invalid arguments
+2 = input file not found
+3 = output blocked / permission issue
+4 = pipeline runtime error
+```
+
+Exact exit codes can be adjusted during implementation, but the CLI should return non-zero for configuration or runtime errors.
 
 ## Output Design
 
@@ -129,6 +212,32 @@ PASS / FAIL
 篡改 / 未篡改
 安全 / 不安全
 ```
+
+## Console Output Format
+
+Suggested console output:
+
+```text
+[TamperShield] Document-first demo runner
+Candidate: <path>
+Baseline: <path>
+Mode: read-only / report-export
+Summary:
+  total: ...
+  by_severity: ...
+  by_diff_type: ...
+Metadata:
+  candidate_page_count: ...
+  baseline_page_count: ...
+  difference_count: ...
+Report written: <path>
+```
+
+Do not print final audit judgment.
+
+Do not print full evidence records by default.
+
+Only print first N records if `--show-records N` is provided.
 
 ## Example Commands
 
@@ -157,6 +266,28 @@ python tools/run_document_demo.py --auto-discover --input-dir data/base_docs --r
 ```
 
 These are future CLI design examples only. Do not run them until the CLI is implemented.
+
+## Future Test Commands
+
+Future CLI implementation test commands:
+
+```powershell
+python tools/run_document_demo.py --help
+
+python tools/run_document_demo.py --auto-discover --input-dir data/base_docs
+
+python tools/run_document_demo.py --auto-discover --input-dir data/base_docs --show-metadata
+
+python tools/run_document_demo.py --auto-discover --input-dir data/base_docs --show-records 5
+
+python tools/run_document_demo.py --auto-discover --input-dir data/base_docs --report-output data/output/demo_report.md
+
+python tools/run_document_demo.py --auto-discover --input-dir data/base_docs --report-output data/output/demo_report.md --allow-write
+```
+
+The command with `--report-output` but without `--allow-write` should be blocked.
+
+The command with `--allow-write` may write only the specified report path.
 
 ## Error Handling
 
@@ -188,6 +319,18 @@ exit with non-zero code on configuration or runtime error
 ```
 
 This is pseudocode only, not a complete Python implementation.
+
+## Future Acceptance Tests
+
+- `python tools/run_document_demo.py --help` works.
+- Read-only auto-discover run prints `EvidenceIndex` summary.
+- Read-only run does not create files.
+- `--report-output` without `--allow-write` is blocked.
+- `--allow-write` with explicit report output writes exactly one Markdown file.
+- Existing output file is not overwritten unless `--overwrite` is passed.
+- Multiple PDF/DOCX inputs under auto-discover cause a clear error instead of silent selection.
+- CLI does not import core parser / aligner / compare modules directly.
+- CLI does not output final audit judgments.
 
 ## Acceptance Criteria
 

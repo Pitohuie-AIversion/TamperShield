@@ -1,5 +1,7 @@
 # TamperShield Demo Workflow
 
+This document describes the validated Document-first demo workflow for comparing a candidate PDF against a baseline DOCX and exporting an evidence-based Markdown report. The report presents evidence and review context; it is not a final tamper judgement.
+
 ## Demo Goal
 
 This demo validates the TamperShield Document-first workflow for:
@@ -47,6 +49,15 @@ Do not prepend LibreOffice's `program` directory to `PATH` before running `conda
 
 If LibreOffice needs to be added to `PATH`, append it to the end of `PATH`, or call `soffice.exe` explicitly.
 
+## Quick Start
+
+1. Run the read-only pipeline command first.
+2. Export a Markdown report only after confirming the output path and write permission.
+
+Use the command in [Read-Only Run Command](#read-only-run-command).
+
+Use the command in [Explicit Markdown Report Export Command](#explicit-markdown-report-export-command) only when writing is permitted.
+
 ## Input Files
 
 Use the standard input directory:
@@ -68,6 +79,20 @@ conda run -n tamper_shield python -c "from pathlib import Path; from main import
 
 This command does not write files. `report_output_path` defaults to `None`.
 
+## Expected Read-Only Output
+
+Current validated reference:
+
+```text
+candidate_page_count = 39
+baseline_page_count = 44
+difference_count = 69
+page_reordered = 0
+requires_table_compare_count = 0
+```
+
+Exact difference subtype counts may change if the parser, aligner, or input files change, but this baseline is the currently validated reference.
+
 ## Explicit Markdown Report Export Command
 
 Only run this command when the user explicitly allows writing a report file.
@@ -82,6 +107,14 @@ Report export requirements:
 - Always pass `allow_write=True` when writing is intended.
 - Keep `overwrite=False` by default.
 - Do not overwrite existing reports unless the user explicitly asks for overwrite behavior.
+
+## Report Export Safety Notes
+
+- `allow_write=True` is required for writing.
+- `overwrite=False` prevents accidental overwrite.
+- If the output file already exists, choose a new path or explicitly decide whether overwrite is acceptable.
+- Do not write reports into source directories.
+- Recommended output directory: `data/output/`.
 
 ## View Markdown Report
 
@@ -118,6 +151,14 @@ page_profile
 
 `Difference.severity` is the primary evidence severity. `suggested_review_severity` is a page-profile suggestion for manual review context only. It does not replace the primary severity.
 
+## Evidence Interpretation Notes
+
+- `Difference.severity` is the primary evidence severity.
+- `suggested_review_severity` is only a review-context hint.
+- `page_issue_category` explains the likely nature of unmatched pages.
+- The report does not decide whether the document is tampered.
+- Human review is required for high-risk or unknown evidence.
+
 ## Current Page Added / Page Deleted Review Examples
 
 Current real-document validation includes these representative page-level classifications:
@@ -134,6 +175,34 @@ B33/B42 page_deleted likely_attachment_start_page_needs_manual_review / high
 ```
 
 These classifications are not final audit conclusions. They only help reviewers understand the likely page nature behind `page_added` and `page_deleted` evidence.
+
+## Troubleshooting
+
+### Chinese Text Displays Incorrectly
+
+Use `Get-Content -Encoding UTF8` when viewing Markdown reports in PowerShell.
+
+Prefer `Path.glob()` in demo commands instead of embedding long Chinese paths directly inside `python -c` strings.
+
+This is usually a console display / command-wrapper issue, not necessarily a file encoding bug.
+
+### LibreOffice / soffice Not Found
+
+Check `where soffice`.
+
+Check `soffice --version`.
+
+Do not prepend LibreOffice to `PATH` before `conda run`.
+
+Append the LibreOffice path or call `soffice.exe` explicitly.
+
+### report_output_path Write Fails
+
+Check whether `allow_write=True` was provided.
+
+Check whether the output file already exists.
+
+Check `overwrite=False`.
 
 ## Known Limitations
 

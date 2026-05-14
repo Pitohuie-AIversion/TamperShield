@@ -18,6 +18,7 @@ from core.document_models import (
     BoundingBox,
     DocumentElement,
     DocumentPage,
+    ElementType,
     FileType,
     ParsedDocument,
 )
@@ -312,9 +313,35 @@ def _parse_docx_via_rendered_pdf(file_path: str | Path) -> ParsedDocument:
         )
 
 
-def parse_image_document(file_path: str | Path) -> ParsedDocument:
-    """Register an image as a single-page document without running OCR."""
+def parse_image_document(
+    file_path: str | Path,
+    enable_ocr: bool = False,
+    ocr_lang: str = "ch",
+    ocr_use_gpu: bool = False,
+    enable_preprocess: bool = True,
+    preprocess_mode: str = "gray",
+    enable_deskew: bool = True,
+    preserve_ocr_blocks: bool = True,
+) -> ParsedDocument:
+    """Parse an image document, optionally with OCR-backed elements."""
     path = Path(file_path)
+
+    if not enable_ocr:
+        return _parse_image_document_without_ocr(path)
+
+    return _parse_image_document_with_ocr(
+        path=path,
+        ocr_lang=ocr_lang,
+        ocr_use_gpu=ocr_use_gpu,
+        enable_preprocess=enable_preprocess,
+        preprocess_mode=preprocess_mode,
+        enable_deskew=enable_deskew,
+        preserve_ocr_blocks=preserve_ocr_blocks,
+    )
+
+
+def _parse_image_document_without_ocr(path: Path) -> ParsedDocument:
+    """Register an image as a single-page document without running OCR."""
     page = DocumentPage(
         page_number=1,
         page_image_path=str(path),
@@ -346,6 +373,350 @@ def parse_image_document(file_path: str | Path) -> ParsedDocument:
             "source_format": "image",
         },
     )
+
+
+def _parse_image_document_with_ocr(
+    path: Path,
+    ocr_lang: str = "ch",
+    ocr_use_gpu: bool = False,
+    enable_preprocess: bool = True,
+    preprocess_mode: str = "gray",
+    enable_deskew: bool = True,
+    preserve_ocr_blocks: bool = True,
+) -> ParsedDocument:
+    """Parse an image as a single-page OCR-backed ParsedDocument."""
+    from core.ocr_engine import (
+        build_pp_structure,
+        extract_tables_with_metadata,
+        parse_layout_to_blocks,
+    )
+
+    engine = build_pp_structure(lang=ocr_lang, use_gpu=ocr_use_gpu)
+    blocks = parse_layout_to_blocks(engine, str(path))
+
+    preprocess_metadata = {
+        "preprocess_enabled": enable_preprocess,
+        "preprocess_mode": preprocess_mode,
+        "deskew_enabled": enable_deskew,
+        "preprocess_applied": False,
+        "preprocess_output_in_memory": False,
+        "ocr_input": "original_image_path",
+        "preprocess_note": (
+            "Phase 14c records preprocessing parameters only; "
+            "OCR used original image path to avoid intermediate file writes."
+        ),
+    }
+
+    page = DocumentPage(
+        page_number=1,
+        page_image_path=str(path),
+        metadata={
+            "source_file": str(path),
+            "source_format": "image",
+            "page_index": 0,
+            "ocr_enabled": True,
+            "ocr_page_index": 0,
+            "native_text_available": False,
+            "ocr_applied": True,
+            "ocr_backend": "paddleocr_ppstructure",
+            "ocr_lang": ocr_lang,
+            "ocr_use_gpu": ocr_use_gpu,
+            "preprocess": dict(preprocess_metadata),
+        },
+    )
+
+    block_texts: list[str] = []
+    for block_index, block in enumerate(blocks):
+        block_text = _ocr_block_text(block)
+        if block_text.strip():
+            block_texts.append(block_text.strip())
+
+        block_type = _ocr_block_type(block)
+        bbox = _ocr_block_bbox(block, page_number=1)
+        page.add_element(
+            DocumentElement(
+                element_id=f"ocr-page-1-block-{block_index}",
+                element_type=_ocr_block_to_element_type(block_type),
+                page_number=1,
+                text=block_text,
+                bbox=bbox,
+                raw=block if preserve_ocr_blocks else None,
+                metadata={
+                    "source_file": str(path),
+                    "source_format": "image",
+                    "page_index": 0,
+                    "ocr_enabled": True,
+                    "ocr_block_index": block_index,
+                    "ocr_block_type": block_type,
+                    "ocr_confidence": _ocr_block_confidence(block),
+                    "bbox_source": _ocr_block_bbox_source(block),
+                    "preprocess": dict(preprocess_metadata),
+                },
+            )
+        )
+
+    tables = extract_tables_with_metadata(blocks)
+    for table_index, table_item in enumerate(tables):
+        table_text = _flatten_ocr_table_text(table_item)
+        if table_text.strip():
+            block_texts.append(table_text.strip())
+
+        page.add_element(
+            DocumentElement(
+                element_id=f"ocr-page-1-table-{table_index}",
+                element_type="table",
+                page_number=1,
+                text=table_text,
+                bbox=_ocr_table_bbox(table_item, page_number=1),
+                raw={
+                    "df": table_item.get("df"),
+                    "html": table_item.get("html"),
+                    "spans": table_item.get("spans"),
+                },
+                metadata={
+                    "source_file": str(path),
+                    "source_format": "image",
+                    "page_index": 0,
+                    "ocr_enabled": True,
+                    "table_index": table_index,
+                    "html": table_item.get("html"),
+                    "spans": table_item.get("spans"),
+                    "cell_box_list": table_item.get("cell_box_list"),
+                    "table_ocr_pred": table_item.get("table_ocr_pred"),
+                    "source_style": table_item.get("source_style"),
+                    "preprocess": dict(preprocess_metadata),
+                },
+            )
+        )
+
+    if not page.elements:
+        page.add_element(
+            DocumentElement(
+                element_id="ocr-page-1-image-0",
+                element_type="image",
+                page_number=1,
+                metadata={
+                    "source_file": str(path),
+                    "source_format": "image",
+                    "page_index": 0,
+                    "ocr_enabled": True,
+                    "ocr_note": "No OCR blocks were returned.",
+                    "preprocess": dict(preprocess_metadata),
+                },
+            )
+        )
+
+    page.plain_text = "\n".join(block_texts)
+
+    return ParsedDocument(
+        file_path=str(path),
+        file_type="image",
+        pages=[page],
+        metadata={
+            "source_file": str(path),
+            "source_format": "image",
+            "ocr_enabled": True,
+            "ocr_lang": ocr_lang,
+            "ocr_use_gpu": ocr_use_gpu,
+            "preprocess_enabled": enable_preprocess,
+            "preprocess_mode": preprocess_mode,
+            "deskew_enabled": enable_deskew,
+            "preserve_ocr_blocks": preserve_ocr_blocks,
+            "ocr_backend": "paddleocr_ppstructure",
+            "preprocess": dict(preprocess_metadata),
+        },
+    )
+    page.add_element(
+        DocumentElement(
+            element_id="image-page-1-image-0",
+            element_type="image",
+            page_number=1,
+            metadata={
+                "source_file": str(path),
+                "source_format": "image",
+                "page_index": 0,
+            },
+        )
+    )
+
+    return ParsedDocument(
+        file_path=str(path),
+        file_type="image",
+        pages=[page],
+        metadata={
+            "source_file": str(path),
+            "source_format": "image",
+        },
+    )
+
+
+def _ocr_get(obj: Any, key: str, default: Any = None) -> Any:
+    if obj is None:
+        return default
+
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+
+    if hasattr(obj, key):
+        return getattr(obj, key)
+
+    try:
+        return obj[key]
+    except Exception:
+        return default
+
+
+def _ocr_block_text(block: Any) -> str:
+    text = _ocr_get(block, "text", None)
+    if text is not None:
+        return _coerce_ocr_text(text)
+
+    res = _ocr_get(block, "res", None)
+    if res is not None:
+        res_text = _ocr_get(res, "text", None)
+        if res_text is not None:
+            return _coerce_ocr_text(res_text)
+
+        rec_texts = _ocr_get(res, "rec_texts", None)
+        if rec_texts is not None:
+            return _coerce_ocr_text(rec_texts)
+
+    rec_texts = _ocr_get(block, "rec_texts", None)
+    if rec_texts is not None:
+        return _coerce_ocr_text(rec_texts)
+
+    return ""
+
+
+def _coerce_ocr_text(value: Any) -> str:
+    if value is None:
+        return ""
+
+    if isinstance(value, str):
+        return value
+
+    if isinstance(value, (list, tuple)):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+        return " ".join(parts)
+
+    return str(value)
+
+
+def _ocr_block_bbox(block: Any, page_number: int) -> BoundingBox | None:
+    bbox_value = _first_ocr_field(
+        block,
+        keys=("bbox", "box", "layout_bbox", "coordinate"),
+    )
+    return _bbox_from_value(bbox_value, page_number=page_number)
+
+
+def _ocr_block_bbox_source(block: Any) -> str:
+    for key in ("bbox", "box", "layout_bbox", "coordinate"):
+        if _first_ocr_field(block, keys=(key,)) is not None:
+            return key
+    return ""
+
+
+def _ocr_block_type(block: Any) -> str:
+    block_type = _first_ocr_field(block, keys=("type", "label"))
+    if block_type is None:
+        return ""
+    return str(block_type).strip().lower()
+
+
+def _ocr_block_confidence(block: Any) -> Any:
+    return _first_ocr_field(
+        block,
+        keys=("confidence", "score", "prob", "rec_scores"),
+    )
+
+
+def _first_ocr_field(obj: Any, keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        value = _ocr_get(obj, key, None)
+        if value is not None:
+            return value
+
+    res = _ocr_get(obj, "res", None)
+    if res is not None:
+        for key in keys:
+            value = _ocr_get(res, key, None)
+            if value is not None:
+                return value
+
+    return None
+
+
+def _ocr_block_to_element_type(block_type: str) -> ElementType:
+    normalized = block_type.strip().lower()
+
+    if normalized == "title":
+        return "title"
+    if normalized in {"text", "paragraph"}:
+        return "paragraph"
+    if normalized == "table":
+        return "table"
+    if normalized in {"figure", "image"}:
+        return "image"
+    if normalized in {"seal", "signature"}:
+        return "signature"
+    if normalized == "header":
+        return "header"
+    if normalized == "footer":
+        return "footer"
+
+    return "unknown"
+
+
+def _ocr_table_bbox(table_item: dict[str, Any], page_number: int) -> BoundingBox | None:
+    return _bbox_from_value(table_item.get("bbox"), page_number=page_number)
+
+
+def _bbox_from_value(value: Any, page_number: int) -> BoundingBox | None:
+    if value is None:
+        return None
+
+    if isinstance(value, (list, tuple)) and len(value) == 4:
+        try:
+            x0, y0, x1, y1 = [float(item) for item in value]
+        except (TypeError, ValueError):
+            return None
+        return BoundingBox(
+            page_number=page_number,
+            x0=x0,
+            y0=y0,
+            x1=x1,
+            y1=y1,
+        )
+
+    return None
+
+
+def _flatten_ocr_table_text(table_item: dict[str, Any]) -> str:
+    df = table_item.get("df")
+    if df is not None:
+        try:
+            values = df.fillna("").astype(str).values.flatten()
+            parts = [str(value).strip() for value in values if str(value).strip()]
+            if parts:
+                return " ".join(parts)
+        except Exception:
+            pass
+
+    spans = table_item.get("spans") or []
+    span_text = [
+        str(span.get("text", "")).strip()
+        for span in spans
+        if isinstance(span, dict) and str(span.get("text", "")).strip()
+    ]
+    if span_text:
+        return " ".join(span_text)
+
+    html = table_item.get("html")
+    if isinstance(html, str):
+        return " ".join(html.split())
+
+    return ""
 
 
 def _pdf_block_text(block: Any) -> str:

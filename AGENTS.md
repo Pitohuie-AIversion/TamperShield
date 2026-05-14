@@ -97,44 +97,35 @@ LLMs must not participate in final audit data generation or audit judgment.
 
 ## Current Development Focus
 
-The Document-first pipeline, optional `main.py` integration, and EvidenceIndex-based Markdown report generation have been implemented.
+The real-document validation and targeted fixes through Phase 11p have been completed.
 
-Completed core modules and entrypoints:
-
-```text
-core/document_models.py
-core/document_parser.py
-core/page_aligner.py
-core/content_compare.py
-core/table_compare.py
-core/evidence_index.py
-core/document_pipeline.py
-core/report_generator.py
-main.py::run_document_first_pipeline(...)
-```
-
-The current focus is Phase 10:
+Current stable validation baseline:
 
 ```text
-real document validation
+candidate_page_count = 39
+baseline_page_count = 44
+difference_count = 69
+page_reordered = 0
+requires_table_compare_count = 0
 ```
 
-Rules for Phase 10:
+Important validation conclusions:
 
-```text
-- Use real candidate document and baseline document pairs.
-- Validate the full Document-first flow through run_document_first_pipeline(...).
-- Verify that the default behavior returns EvidenceIndex and does not write files.
-- Verify that report_output_path with allow_write=False blocks writing.
-- Verify that report_output_path with allow_write=True writes a Markdown report.
-- Record observed parser, alignment, content comparison, table comparison, evidence index, and report issues.
-- Do not refactor core architecture before collecting validation evidence.
-- Do not use LLMs to judge document tampering, field correspondence, missing values, or amount equality.
-```
+* DOCX parsing should use LibreOffice rendered PDF pagination when available.
+* Forward baseline skips are not treated as reordered pages.
+* `page_added/page_deleted` evidence includes `page_issue_category` and `suggested_review_severity` metadata.
+* Markdown reports display Review context and Page profile.
+* The generated Markdown report is UTF-8; Chinese path mojibake observed earlier was caused by PowerShell/conda stdout display, not internal project encoding.
+* Use `Path.glob()` in command-line demos to avoid passing long Chinese paths directly through `python -c`.
+* Use `Get-Content -Encoding UTF8` when viewing Markdown reports in PowerShell.
+* Do not prepend LibreOffice to PATH before running `conda run ... python`, because it may shadow Python with LibreOffice's python-core.
 
-Phase 11e confirmed that DOCX pagination should prefer LibreOffice rendered-PDF parsing when available. If rendered PDF parsing succeeds, validation should use the rendered page count rather than the native single-page fallback.
+Rules for Phase 12:
 
-When `requires_table_compare_count=0` after rendered-PDF parsing, do not assume there are no tables in the original DOCX. It may mean that table elements were not preserved as table elements after rendering to PDF.
+- Do not rebuild the core architecture.
+- Do not re-investigate the 44/45 page_count issue unless new evidence appears.
+- Do not fix Chinese metadata encoding in code unless a code-level Unicode bug is reproduced.
+- Focus on stable demo commands, documentation, known limitations, and next improvement backlog.
 
 Do not recreate already completed modules unless explicitly asked.
 

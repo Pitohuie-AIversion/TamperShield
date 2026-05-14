@@ -302,6 +302,37 @@ report path when explicitly written
 
 The CLI should prefer `Path.glob()` or explicit path arguments to avoid Windows Chinese-path command-line display issues.
 
+Current CLI wrapper:
+
+```text
+tools/run_document_demo.py
+```
+
+The CLI has been implemented as a thin wrapper around:
+
+```text
+main.py::run_document_first_pipeline(...)
+```
+
+Validated behavior:
+
+```text
+default read-only execution
+--auto-discover read-only run works with one PDF and one DOCX
+--report-output without --allow-write is blocked
+--show-metadata works
+--show-records N works
+no direct core parser / aligner / compare imports
+```
+
+LibreOffice subprocess decoding note:
+
+```text
+core/document_parser.py should keep explicit encoding/error handling for LibreOffice subprocess output:
+encoding="utf-8"
+errors="replace"
+```
+
 ## 表格子能力规则
 
 文档级对齐与比对必须先形成可追溯的页面、区域和元素结构，再根据元素类型进入段落、图片、签章、空白页或表格比对。

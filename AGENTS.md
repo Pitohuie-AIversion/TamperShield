@@ -97,20 +97,15 @@ LLMs must not participate in final audit data generation or audit judgment.
 
 ## Current Development Focus
 
-The Document-first pipeline, real-document validation, targeted fixes, and demo documentation are complete through Phase 12d.
+The CLI wrapper has been implemented and read-only validated.
 
-Current project entry documents:
+Current CLI entry:
 
 ```text
-README.md
-DEMO_WORKFLOW.md
-DEMO_CHECKLIST.md
-PROJECT_RULES.md
-AGENTS.md
-TODO.md
+tools/run_document_demo.py
 ```
 
-Current stable validation baseline:
+Current stable CLI read-only baseline:
 
 ```text
 candidate_page_count = 39
@@ -120,24 +115,25 @@ page_reordered = 0
 requires_table_compare_count = 0
 ```
 
-The current focus is Phase 13:
+Important current notes:
 
-```text
-CLI wrapper / demo runner design
-```
+* The CLI is a thin wrapper around `main.py::run_document_first_pipeline(...)`.
+* The CLI defaults to read-only execution.
+* Report writing requires explicit `--report-output` and `--allow-write`.
+* `--overwrite` is false by default.
+* `--auto-discover` works when exactly one PDF and one DOCX exist in `data/base_docs`.
+* The CLI does not import core parser / aligner / compare modules directly.
+* LibreOffice subprocess decode errors have been mitigated in `core/document_parser.py` with `encoding="utf-8", errors="replace"`.
+* PowerShell / conda stdout may still display Chinese-path mojibake; this is a display-layer issue.
 
-Rules for Phase 13:
+Rules for Phase 14:
 
-* Design before implementation.
-* Do not rebuild the core architecture.
-* The CLI wrapper should call `main.py::run_document_first_pipeline(...)`.
-* The CLI wrapper must default to read-only execution.
-* Report writing must require explicit `--allow-write`.
-* Report output path must be explicit.
-* Overwrite must be false by default.
-* Do not output final audit judgments such as tampered / not tampered / safe / unsafe / PASS / FAIL.
-* Do not use LLMs in the CLI.
-* Do not bypass `EvidenceIndex`.
+- CLI report export may be tested only with an explicit output path.
+- `--allow-write` must be explicit.
+- Do not use `--overwrite` unless the user explicitly asks to test overwrite behavior.
+- Do not modify core pipeline logic.
+- Do not output final audit judgments.
+- Do not create additional reports except the explicitly named Phase 14 report.
 
 Do not recreate already completed modules unless explicitly asked.
 

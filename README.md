@@ -62,6 +62,8 @@ requires_table_compare_count = 0
 
 - [Demo Workflow](DEMO_WORKFLOW.md)
 - [Demo Checklist](DEMO_CHECKLIST.md)
+- CLI runner: `tools/run_document_demo.py`
+- [CLI Design](CLI_DESIGN.md)
 - [Project Rules](PROJECT_RULES.md)
 - [Agent Instructions](AGENTS.md)
 - [TODO](TODO.md)
@@ -81,6 +83,14 @@ Windows 注意事项：
 - 如果把 LibreOffice 路径前置，`python` 可能解析到 LibreOffice 自带的 `python-core`。
 
 ## Read-Only Demo Command
+
+Preferred CLI command after Phase 13c:
+
+```powershell
+conda run -n tamper_shield python tools/run_document_demo.py --auto-discover --input-dir data/base_docs
+```
+
+This is the preferred demo command after Phase 13c. The long `python -c` command remains useful for debugging.
 
 ```powershell
 conda run -n tamper_shield python -c "from pathlib import Path; from main import run_document_first_pipeline; pdf=list(Path('data/base_docs').glob('*.pdf'))[0]; docx=list(Path('data/base_docs').glob('*.docx'))[0]; idx=run_document_first_pipeline(candidate_file=pdf, baseline_file=docx); print(idx.summary()); print(idx.metadata)"

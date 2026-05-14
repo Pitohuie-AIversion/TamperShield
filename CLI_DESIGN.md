@@ -1,5 +1,25 @@
 # TamperShield CLI Design
 
+## Implementation Status
+
+Phase 13c implemented the initial CLI wrapper:
+
+```text
+tools/run_document_demo.py
+```
+
+Validated behavior through Phase 13d:
+
+* `--help` works.
+* `--auto-discover` read-only run works when one PDF and one DOCX exist.
+* Explicit `--candidate` / `--baseline` read-only run works.
+* `--show-metadata` works.
+* `--show-records 5` works.
+* `--report-output` without `--allow-write` is blocked.
+* No report is written during read-only runs.
+
+Phase 13e also fixed LibreOffice subprocess output decoding in `core/document_parser.py` by using explicit UTF-8 decoding with replacement for invalid bytes.
+
 ## Design Goals
 
 CLI 的目标是把当前 `README.md` / `DEMO_WORKFLOW.md` 中的长 `python -c` demo 命令封装成稳定、可复制、可审计的命令行入口。

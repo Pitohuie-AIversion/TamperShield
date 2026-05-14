@@ -22,6 +22,7 @@ This checklist is used before and during a TamperShield Document-first demo. It 
 
 ## Read-Only Pipeline Checklist
 
+- [ ] Preferred CLI command `python tools/run_document_demo.py --auto-discover --input-dir data/base_docs` is available.
 - [ ] The read-only command from `DEMO_WORKFLOW.md` is run first.
 - [ ] No `report_output_path` is passed in the read-only command.
 - [ ] No files are written during the read-only run.
@@ -39,6 +40,7 @@ This checklist is used before and during a TamperShield Document-first demo. It 
 - [ ] Report export is performed only after explicit write permission.
 - [ ] `report_output_path` is explicitly provided.
 - [ ] `allow_write=True` is explicitly provided.
+- [ ] CLI report export uses `--report-output` and `--allow-write`.
 - [ ] `overwrite=False` is used by default.
 - [ ] The target report file does not already exist before writing.
 - [ ] The report is written under `data/output/`.

@@ -69,6 +69,14 @@ data/base_docs/*.docx
 
 Prefer discovering input files with `Path.glob()` instead of embedding long Chinese file names directly inside `python -c` strings. This avoids confusing stdout display behavior in some PowerShell / `conda run` environments.
 
+## Preferred CLI Demo Command
+
+```powershell
+conda run -n tamper_shield python tools/run_document_demo.py --auto-discover --input-dir data/base_docs
+```
+
+This command is read-only by default and does not write a report.
+
 ## Read-Only Run Command
 
 This command runs the Document-first pipeline and prints the in-memory `EvidenceIndex` summary and metadata.

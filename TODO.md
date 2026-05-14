@@ -128,23 +128,39 @@
 - [x] Phase 12d：新增 `README.md`
 - [x] `README.md` 已作为项目根目录入口说明
 - [x] `README.md` 已链接 Demo Workflow、Demo Checklist、Project Rules、Agent Instructions 和 TODO
+- [x] Phase 13c：新增 `tools/run_document_demo.py`
+- [x] CLI wrapper 只调用 `main.py::run_document_first_pipeline(...)`
+- [x] CLI 默认只读
+- [x] CLI 支持 `--candidate` / `--baseline` / `--auto-discover` / `--input-dir`
+- [x] CLI 支持 `--report-output` / `--allow-write` / `--overwrite`
+- [x] CLI 支持 `--show-metadata` / `--show-records`
+- [x] CLI 参数校验已覆盖无输入、缺少 allow-write、overwrite 未授权、show-records 非法值
+- [x] Phase 13d：CLI wrapper 只读真实运行验证通过
+- [x] `--auto-discover` 真实只读运行成功
+- [x] 显式路径真实只读运行成功
+- [x] `--show-metadata` 和 `--show-records 5` 验证通过
+- [x] `--report-output` 无 `--allow-write` 正确阻断
+- [x] CLI 真实验证稳定输出 `candidate_page_count=39`、`baseline_page_count=44`、`difference_count=69`
+- [x] Phase 13e：修复 LibreOffice subprocess 解码异常
+- [x] `core/document_parser.py` 的 LibreOffice subprocess 调用已加入 `encoding="utf-8", errors="replace"`
+- [x] 修复后 DOCX rendered PDF parse 仍稳定为 `page_count=44`
+- [x] CLI 只读运行不再出现 UnicodeDecodeError traceback
 
 ## Current Focus
 
-当前阶段已经完成 Document-first 真实验证、targeted fixes，以及 demo / 交付文档入口整理。
+当前阶段已经完成 Document-first pipeline、真实文档验证、Markdown 报告、demo 文档和 CLI wrapper。
 
-当前可交付文档入口：
+当前可用入口：
 
 ```text
 README.md
 DEMO_WORKFLOW.md
 DEMO_CHECKLIST.md
-PROJECT_RULES.md
-AGENTS.md
-TODO.md
+CLI_DESIGN.md
+tools/run_document_demo.py
 ```
 
-当前稳定验证基线：
+当前 CLI 稳定只读验证基线：
 
 ```text
 candidate_page_count = 39
@@ -157,28 +173,24 @@ requires_table_compare_count = 0
 当前下一步应进入：
 
 ```text
-Phase 13：CLI wrapper / demo runner 设计准备
+Phase 14：CLI 写报告路径受控验证与交付收尾
 ```
 
-Phase 13 的目标是为 demo 命令提供更友好的命令行入口，但必须保持 Document-first pipeline、EvidenceIndex 和显式写入权限控制不变。
+Phase 14 的目标是在明确允许写入时，用 CLI wrapper 验证 Markdown 报告导出，并整理最终交付说明。
 
 ## Next
 
-### Phase 13：CLI wrapper / demo runner 设计准备
+### Phase 14：CLI 写报告路径受控验证与交付收尾
 
-- [ ] 设计一个轻量 CLI wrapper，例如 `tools/run_document_demo.py`
-- [ ] CLI 默认只读运行，不写文件
-- [ ] CLI 输入参数应支持 `--candidate` 和 `--baseline`
-- [ ] CLI 可选支持 `--auto-discover` 使用 `Path.glob()` 查找 `data/base_docs/*.pdf` 和 `data/base_docs/*.docx`
-- [ ] CLI 可选支持 `--report-output`
-- [ ] CLI 只有在显式 `--allow-write` 时才允许写报告
-- [ ] CLI 默认 `overwrite=False`
-- [ ] CLI 不得输出 tampered / not tampered / safe / unsafe / PASS / FAIL 结论
-- [ ] CLI 只调用 `main.py::run_document_first_pipeline(...)`
-- [ ] CLI 不得直接调用 parser / aligner / content_compare / table_compare
-- [ ] CLI 不得引入 LLM
-- [ ] CLI 不得改变现有 Python core API
-- [ ] 先设计，不急于实现
+- [ ] 使用 CLI 进行 `--report-output` 无 `--allow-write` 阻断复测
+- [ ] 在目标文件不存在时，显式使用 `--allow-write` 写出一个 CLI 报告
+- [ ] 输出路径必须明确，例如 `data/output/phase14_cli_report.md`
+- [ ] 默认 `--overwrite` 不使用
+- [ ] 验证报告中包含 Summary / Metadata / Review context / Page profile
+- [ ] 验证 PowerShell 使用 `Get-Content -Encoding UTF8` 查看报告
+- [ ] 验证已有报告不被覆盖
+- [ ] 不输出最终审计结论
+- [ ] 同步最终 demo 交付说明
 
 ## Test Commands
 

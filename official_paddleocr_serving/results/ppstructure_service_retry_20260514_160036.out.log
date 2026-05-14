@@ -1,0 +1,7 @@
+Starting official PaddleX PP-StructureV3 service on 0.0.0.0:8081
+Pipeline: PP-StructureV3
+If startup fails because the pipeline name is unknown, export the official PaddleX pipeline config to YAML and pass the YAML path as -Pipeline.
+INFO:     127.0.0.1:51059 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51060 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60034 - "POST /layout-parsing HTTP/1.1" 200 OK
+

@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File "X:\Users\Pitoyoung\anaconda3\envs\tamper_shield\lib\runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "X:\Users\Pitoyoung\anaconda3\envs\tamper_shield\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "X:\Users\Pitoyoung\anaconda3\envs\tamper_shield\Scripts\paddlex.exe\__main__.py", line 5, in <module>
+  File "X:\Users\Pitoyoung\anaconda3\envs\tamper_shield\lib\site-packages\paddlex\__main__.py", line 26, in console_entry
+    main()
+  File "X:\Users\Pitoyoung\anaconda3\envs\tamper_shield\lib\site-packages\paddlex\paddlex_cli.py", line 622, in main
+    serve(
+  File "X:\Users\Pitoyoung\anaconda3\envs\tamper_shield\lib\site-packages\paddlex\paddlex_cli.py", line 504, in serve
+    from .inference.serving.basic_serving import create_pipeline_app, run_server
+  File "X:\Users\Pitoyoung\anaconda3\envs\tamper_shield\lib\site-packages\paddlex\inference\serving\__init__.py", line 17, in <module>
+    require_serving_plugin()
+  File "X:\Users\Pitoyoung\anaconda3\envs\tamper_shield\lib\site-packages\paddlex\utils\deps.py", line 238, in require_serving_plugin
+    raise DependencyError(
+paddlex.utils.deps.DependencyError: The serving plugin is not available. Please install it properly.
+

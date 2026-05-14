@@ -245,3 +245,229 @@ python scripts/test_table_cells_detection.py --image samples/table.jpg --output-
   https://www.paddleocr.ai/v3.4.1/version3.x/pipeline_usage/table_recognition_v2.html
 - PaddleOCR Table Cells Detection：默认模型可使用 `RT-DETR-L_wired_table_cell_det`  
   https://www.paddleocr.ai/main/en/version3.x/module_usage/table_cells_detection.html
+
+## Phase 14b 真实验证记录（2026-05-14）
+
+本轮验证仍然只在 `official_paddleocr_serving/` 目录中进行，未接入 `core/`、`main.py`、`tools/` 或现有 Document-first pipeline。
+
+### 本机环境
+
+实际可用环境为现有 conda 环境：
+
+```powershell
+conda run -n tamper_shield python scripts/check_environment.py
+```
+
+结果：
+
+```text
+Python: 3.10.20
+paddleocr: 3.5.0
+paddlex: 3.5.1
+paddle: 3.2.2
+Paddle GPU: compiled_with_cuda=False, gpu_count=0
+```
+
+base 环境为 Python 3.12，未安装 `paddleocr` / `paddlex` / `paddle`，不要直接用 base 环境运行 serving。
+
+### 脚本兼容性检查
+
+已通过：
+
+```powershell
+python -m py_compile scripts/check_environment.py scripts/test_ocr_client.py scripts/test_ppstructure_client.py scripts/test_table_cells_detection.py
+```
+
+PowerShell 脚本解析已通过，bash 脚本语法已通过：
+
+```bash
+bash -n scripts/start_ocr_service.sh scripts/start_ppstructure_service.sh scripts/start_table_service.sh
+```
+
+### 样例文件
+
+本轮从仓库已有扫描样例生成了：
+
+```text
+samples/test.jpg
+samples/table.jpg
+```
+
+### serving 插件
+
+首次启动 OCR serving 时出现：
+
+```text
+paddlex.utils.deps.DependencyError: The serving plugin is not available.
+```
+
+已执行：
+
+```powershell
+conda run -n tamper_shield paddlex --install serving -y
+```
+
+安装成功后 OCR / PP-StructureV3 serving 可以启动。
+
+### OCR serving 验证
+
+启动命令：
+
+```powershell
+conda run -n tamper_shield powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_ocr_service.ps1
+```
+
+已确认：
+
+```text
+service: started
+docs: http://127.0.0.1:8080/docs
+endpoint: /ocr
+```
+
+测试命令：
+
+```powershell
+conda run -n tamper_shield python scripts/test_ocr_client.py --image samples/test.jpg --timeout 300 --overwrite
+```
+
+生成结果：
+
+```text
+results/ocr_result.json
+```
+
+注意：第一次请求使用默认 120 秒 timeout 超时。CPU 环境下首次加载模型/推理较慢，建议使用 `--timeout 300`。
+
+### PP-StructureV3 serving 验证
+
+启动命令：
+
+```powershell
+conda run -n tamper_shield powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_ppstructure_service.ps1
+```
+
+已确认：
+
+```text
+pipeline: PP-StructureV3
+service: started
+docs: http://127.0.0.1:8081/docs
+endpoint: /layout-parsing
+```
+
+测试命令：
+
+```powershell
+conda run -n tamper_shield python scripts/test_ppstructure_client.py --image samples/test.jpg --timeout 300 --overwrite
+```
+
+生成结果：
+
+```text
+results/ppstructure_result.json
+```
+
+注意：第一次请求曾出现连接被服务端重置，重启并等待模型加载完成后重试成功。CPU 环境下建议单独启动该服务，不要同时运行多个重模型 serving。
+
+### Table Cells Detection 验证
+
+测试命令：
+
+```powershell
+conda run -n tamper_shield python scripts/test_table_cells_detection.py --image samples/table.jpg --output-dir results
+```
+
+已确认模型：
+
+```text
+RT-DETR-L_wired_table_cell_det
+```
+
+生成结果：
+
+```text
+results/table_cells.json
+results/table_cells_visual/table_res.jpg
+```
+
+### Table Recognition v2 serving 验证
+
+本地 PaddleX 安装中已确认：
+
+```text
+pipeline: table_recognition_v2
+config: paddlex/configs/pipelines/table_recognition_v2.yaml
+endpoint: /table-recognition
+```
+
+启动命令：
+
+```powershell
+conda run -n tamper_shield powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_table_service.ps1 -Pipeline table_recognition_v2
+```
+
+结果：
+
+```text
+service: failed
+```
+
+失败原因 1：与 PP-StructureV3 同时运行时出现内存不足：
+
+```text
+MemoryError: bad allocation
+```
+
+失败原因 2：单独启动后需要下载约 652MB 模型参数，下载到约 41% 时磁盘空间不足：
+
+```text
+OSError: [Errno 28] No space left on device
+Exception: No model source is available! Please check network or use local model files!
+```
+
+结论：`table_recognition_v2` 名称和 `/table-recognition` endpoint 已确认，但本机由于磁盘空间不足，Table Recognition v2 serving 尚未完成启动和请求验证。
+
+### 常见错误和解决方法
+
+`paddlex` 命令不存在：
+
+```text
+原因：当前 shell 未激活 PaddleOCR 环境，或 base 环境未安装 PaddleX。
+处理：使用 conda run -n tamper_shield ...，或创建并激活 paddleocr_official 环境。
+```
+
+serving 插件缺失：
+
+```text
+原因：未安装 PaddleX serving 插件。
+处理：paddlex --install serving
+```
+
+首次 OCR 请求超时：
+
+```text
+原因：CPU 环境首次模型加载和推理较慢。
+处理：增加 --timeout 300，或先预热一次。
+```
+
+PP-StructureV3 请求连接重置：
+
+```text
+原因：模型加载/推理过程中服务端退出或资源不足。
+处理：单独启动 PP-StructureV3，等待 /docs 可访问后再请求，必要时重启服务。
+```
+
+Table Recognition v2 启动内存不足：
+
+```text
+原因：多个 PaddleX 大模型 serving 同时运行。
+处理：一次只启动一个 serving，先停止 OCR / PP-StructureV3 再启动 Table Recognition v2。
+```
+
+模型下载磁盘空间不足：
+
+```text
+原因：PaddleX 官方模型缓存目录空间不足。
+处理：清理磁盘空间，或配置 PaddleX 使用已有本地模型文件。
+```

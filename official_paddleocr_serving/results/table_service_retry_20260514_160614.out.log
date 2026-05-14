@@ -1,0 +1,5 @@
+Starting official PaddleX Table Recognition v2 service on 0.0.0.0:8082
+Pipeline: table_recognition_v2
+<Response [404]>
+Downloading Model from https://www.modelscope.cn to directory: C:\Users\PITOYO~1\AppData\Local\Temp\tmpd9pcurcu\temp_dir
+

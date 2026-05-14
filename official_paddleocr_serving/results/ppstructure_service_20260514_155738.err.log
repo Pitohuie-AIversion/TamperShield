@@ -1,0 +1,37 @@
+[32mCreating model: ('PP-LCNet_x1_0_doc_ori', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\PP-LCNet_x1_0_doc_ori`.[0m
+INFO: Could not find files for the given pattern(s).
+X:\Users\Pitoyoung\anaconda3\envs\tamper_shield\lib\site-packages\paddle\utils\cpp_extension\extension_utils.py:718: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+WARNING: Logging before InitGoogleLogging() is written to STDERR
+I0514 15:57:46.206274 62260 onednn_context.cc:81] oneDNN v3.6.2
+[32mCreating model: ('UVDoc', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\UVDoc`.[0m
+[32mCreating model: ('PP-DocBlockLayout', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\PP-DocBlockLayout`.[0m
+[32mCreating model: ('PP-DocLayout_plus-L', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\PP-DocLayout_plus-L`.[0m
+[32mCreating model: ('PP-LCNet_x1_0_textline_ori', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\PP-LCNet_x1_0_textline_ori`.[0m
+[32mCreating model: ('PP-OCRv5_server_det', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\PP-OCRv5_server_det`.[0m
+[32mCreating model: ('PP-OCRv5_server_rec', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\PP-OCRv5_server_rec`.[0m
+[32mCreating model: ('PP-LCNet_x1_0_table_cls', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\PP-LCNet_x1_0_table_cls`.[0m
+[32mCreating model: ('SLANeXt_wired', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\SLANeXt_wired`.[0m
+[32mCreating model: ('SLANet_plus', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\SLANet_plus`.[0m
+[32mCreating model: ('RT-DETR-L_wired_table_cell_det', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\RT-DETR-L_wired_table_cell_det`.[0m
+[32mCreating model: ('RT-DETR-L_wireless_table_cell_det', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\RT-DETR-L_wireless_table_cell_det`.[0m
+[32mCreating model: ('PP-FormulaNet_plus-L', None, None)[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `C:\Users\Pitoyoung\.paddlex\official_models\PP-FormulaNet_plus-L`.[0m
+INFO:     Started server process [45228]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8081 (Press CTRL+C to quit)
+I0514 15:58:40.401044 31456 onednn_context.cc:81] oneDNN v3.6.2
+

@@ -97,13 +97,19 @@ LLMs must not participate in final audit data generation or audit judgment.
 
 ## Current Development Focus
 
-Current active implementation phase:
+Current active phase:
 
 ```text
-Phase 13c: implement minimal CLI wrapper
+Phase 14a: inventory existing OCR and preprocessing capabilities
 ```
 
-The CLI wrapper has been implemented and read-only validated.
+Phase 13c / 13d / 13e have already completed:
+
+```text
+Phase 13c: CLI wrapper implemented
+Phase 13d: CLI read-only validation completed
+Phase 13e: LibreOffice subprocess decode fix completed
+```
 
 Current CLI entry:
 
@@ -126,6 +132,18 @@ difference_count = 69
 page_reordered = 0
 requires_table_compare_count = 0
 ```
+
+Current Phase 14a scope:
+
+* Read `core/pre_processing.py`
+* Read `core/ocr_engine.py`
+* Inventory reusable preprocessing functions
+* Inventory reusable OCR / PPStructure functions
+* Identify how OCR output should map to `DocumentPage` / `DocumentElement`
+* Do not implement OCR
+* Do not modify core code
+* Do not run real OCR
+* Do not write files
 
 Important current notes:
 
@@ -157,14 +175,16 @@ core/ocr_engine.py
 
 These modules can be reused, but future OCR features must integrate through the Document-first parser.
 
-Rules for Phase 13/14:
+Rules for Phase 14a:
 
-- CLI report export may be tested only with an explicit output path.
-- `--allow-write` must be explicit.
-- Do not use `--overwrite` unless the user explicitly asks to test overwrite behavior.
-- Do not modify core pipeline logic.
-- Do not output final audit judgments.
-- Do not create additional reports except the explicitly named Phase 14 report.
+- This phase is read-only inventory and design preparation.
+- Do not modify `core/pre_processing.py`.
+- Do not modify `core/ocr_engine.py`.
+- Do not run PaddleOCR or real OCR.
+- Do not write files.
+- Do not change Document-first APIs.
+- Do not reintroduce table-first flow.
+- Keep CLI safety principles: read-only by default, explicit `--report-output`, explicit `--allow-write`, no default overwrite, and no final audit judgments.
 
 ### OCR Work Rules
 

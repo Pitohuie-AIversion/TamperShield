@@ -151,19 +151,33 @@
 当前阶段：
 
 ```text
-Phase 13c：Implement minimal CLI wrapper
+Phase 14a：Inventory existing OCR and preprocessing capabilities
 ```
 
-Phase 13c 目标：
+Phase 14a 目标：
 
-* 新增 `tools/run_document_demo.py`
-* 作为 `main.py::run_document_first_pipeline(...)` 的 thin wrapper
-* 默认只读
-* 写报告必须显式 `--allow-write`
-* 不绕过 `EvidenceIndex`
-* 不直接调用 parser / aligner / compare / report internals
+* 只读盘点 `core/pre_processing.py`
+* 只读盘点 `core/ocr_engine.py`
+* 梳理可复用的 OCR / preprocessing 能力
+* 识别哪些函数可以迁入 Document-first parser
+* 识别 OCR 输出如何映射到 `DocumentPage` / `DocumentElement`
+* 不实现 OCR
+* 不修改 core 代码
+* 不运行真实 OCR
+* 不写入 `data/output`
 
-当前阶段已经完成 Document-first pipeline、真实文档验证、Markdown 报告、demo 文档和 CLI wrapper。
+当前已经完成：
+
+```text
+Document-first pipeline
+真实 PDF vs DOCX 验证
+Markdown report export
+Demo workflow / checklist / README
+CLI wrapper
+CLI read-only validation
+LibreOffice subprocess decode fix
+OCR Integration Rules
+```
 
 当前可用入口：
 
@@ -185,10 +199,10 @@ page_reordered = 0
 requires_table_compare_count = 0
 ```
 
-Phase 13c 完成后，下一条产品主线是：
+Phase 14 总目标：
 
 ```text
-Phase 14：OCR integration into Document-first pipeline
+OCR integration into Document-first pipeline
 ```
 
 Phase 14 的目标是把现有 legacy OCR 能力从 table-first 旁路迁入 Document-first parser，使扫描件、图片页、扫描 PDF、红章页和 OCR 表格都能进入统一 EvidenceIndex。
@@ -197,7 +211,7 @@ Phase 14 的目标是把现有 legacy OCR 能力从 table-first 旁路迁入 Doc
 
 ### Phase 14：OCR integration into Document-first pipeline
 
-- [ ] Phase 14a：Inventory existing OCR and preprocessing capabilities
+- [ ] Phase 14a：Inventory existing OCR and preprocessing capabilities（current）
   - [ ] Review `core/pre_processing.py`
   - [ ] Review `core/ocr_engine.py`
   - [ ] Identify reusable preprocessing functions: red seal suppression, deskew, gray enhancement, binarization

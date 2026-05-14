@@ -428,6 +428,47 @@ Exception: No model source is available! Please check network or use local model
 
 结论：`table_recognition_v2` 名称和 `/table-recognition` endpoint 已确认，但本机由于磁盘空间不足，Table Recognition v2 serving 尚未完成启动和请求验证。
 
+### Table Recognition v2 重试验证（2026-05-14）
+
+清理磁盘空间后，Table Recognition v2 serving 已成功启动并完成 HTTP 请求验证。
+
+启动命令：
+
+```powershell
+conda run -n tamper_shield powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_table_service.ps1 -Pipeline table_recognition_v2
+```
+
+已确认：
+
+```text
+pipeline: table_recognition_v2
+service: started
+docs: http://127.0.0.1:8082/docs
+health: http://127.0.0.1:8082/health
+endpoint: /table-recognition
+```
+
+测试命令：
+
+```powershell
+conda run -n tamper_shield python scripts/test_ocr_client.py --base-url http://127.0.0.1:8082 --endpoint /table-recognition --image samples/table.jpg --output results/table_recognition_result.json --timeout 600 --overwrite
+```
+
+生成结果：
+
+```text
+results/table_recognition_result.json
+```
+
+结果确认：
+
+```text
+errorCode: 0
+errorMsg: Success
+```
+
+注意：该服务在 CPU 环境下启动和首次请求都较慢，本轮请求耗时约数分钟。建议单独启动该服务，并使用 `--timeout 600`。
+
 ### 常见错误和解决方法
 
 `paddlex` 命令不存在：

@@ -97,12 +97,24 @@ LLMs must not participate in final audit data generation or audit judgment.
 
 ## Current Development Focus
 
+Current active implementation phase:
+
+```text
+Phase 13c: implement minimal CLI wrapper
+```
+
 The CLI wrapper has been implemented and read-only validated.
 
 Current CLI entry:
 
 ```text
 tools/run_document_demo.py
+```
+
+The CLI wrapper must remain a thin wrapper around:
+
+```text
+main.py::run_document_first_pipeline(...)
 ```
 
 Current stable CLI read-only baseline:
@@ -126,7 +138,26 @@ Important current notes:
 * LibreOffice subprocess decode errors have been mitigated in `core/document_parser.py` with `encoding="utf-8", errors="replace"`.
 * PowerShell / conda stdout may still display Chinese-path mojibake; this is a display-layer issue.
 
-Rules for Phase 14:
+After Phase 13c, the next major product milestone is:
+
+```text
+Phase 14: OCR integration into the Document-first pipeline
+```
+
+Important OCR architecture rule:
+
+OCR must not reintroduce a table-first product flow. OCR output must be converted into `DocumentPage` / `DocumentElement` and then flow through the existing Document-first comparison and `EvidenceIndex`.
+
+Existing OCR modules:
+
+```text
+core/pre_processing.py
+core/ocr_engine.py
+```
+
+These modules can be reused, but future OCR features must integrate through the Document-first parser.
+
+Rules for Phase 13/14:
 
 - CLI report export may be tested only with an explicit output path.
 - `--allow-write` must be explicit.
@@ -134,6 +165,16 @@ Rules for Phase 14:
 - Do not modify core pipeline logic.
 - Do not output final audit judgments.
 - Do not create additional reports except the explicitly named Phase 14 report.
+
+### OCR Work Rules
+
+- OCR is a parser capability, not a separate product workflow.
+- OCR results must not bypass `EvidenceIndex`.
+- OCR table extraction must not become the primary comparison path.
+- OCR text blocks should map to text-like `DocumentElement` records.
+- OCR table results should map to `DocumentElement(TABLE)` when possible.
+- Preserve OCR bbox, confidence, page number, source image, preprocessing settings, and OCR engine metadata when available.
+- OCR should be optional and explicit at first.
 
 Do not recreate already completed modules unless explicitly asked.
 

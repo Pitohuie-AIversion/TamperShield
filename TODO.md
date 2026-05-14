@@ -148,6 +148,21 @@
 
 ## Current Focus
 
+当前阶段：
+
+```text
+Phase 13c：Implement minimal CLI wrapper
+```
+
+Phase 13c 目标：
+
+* 新增 `tools/run_document_demo.py`
+* 作为 `main.py::run_document_first_pipeline(...)` 的 thin wrapper
+* 默认只读
+* 写报告必须显式 `--allow-write`
+* 不绕过 `EvidenceIndex`
+* 不直接调用 parser / aligner / compare / report internals
+
 当前阶段已经完成 Document-first pipeline、真实文档验证、Markdown 报告、demo 文档和 CLI wrapper。
 
 当前可用入口：
@@ -170,27 +185,64 @@ page_reordered = 0
 requires_table_compare_count = 0
 ```
 
-当前下一步应进入：
+Phase 13c 完成后，下一条产品主线是：
 
 ```text
-Phase 14：CLI 写报告路径受控验证与交付收尾
+Phase 14：OCR integration into Document-first pipeline
 ```
 
-Phase 14 的目标是在明确允许写入时，用 CLI wrapper 验证 Markdown 报告导出，并整理最终交付说明。
+Phase 14 的目标是把现有 legacy OCR 能力从 table-first 旁路迁入 Document-first parser，使扫描件、图片页、扫描 PDF、红章页和 OCR 表格都能进入统一 EvidenceIndex。
 
 ## Next
 
-### Phase 14：CLI 写报告路径受控验证与交付收尾
+### Phase 14：OCR integration into Document-first pipeline
 
-- [ ] 使用 CLI 进行 `--report-output` 无 `--allow-write` 阻断复测
-- [ ] 在目标文件不存在时，显式使用 `--allow-write` 写出一个 CLI 报告
-- [ ] 输出路径必须明确，例如 `data/output/phase14_cli_report.md`
-- [ ] 默认 `--overwrite` 不使用
-- [ ] 验证报告中包含 Summary / Metadata / Review context / Page profile
-- [ ] 验证 PowerShell 使用 `Get-Content -Encoding UTF8` 查看报告
-- [ ] 验证已有报告不被覆盖
-- [ ] 不输出最终审计结论
-- [ ] 同步最终 demo 交付说明
+- [ ] Phase 14a：Inventory existing OCR and preprocessing capabilities
+  - [ ] Review `core/pre_processing.py`
+  - [ ] Review `core/ocr_engine.py`
+  - [ ] Identify reusable preprocessing functions: red seal suppression, deskew, gray enhancement, binarization
+  - [ ] Identify reusable OCR functions: PPStructure engine, layout blocks, table HTML, table metadata
+
+- [ ] Phase 14b：Design OCR-backed document parser
+  - [ ] Define how OCR output maps to `DocumentPage`
+  - [ ] Define how OCR text blocks map to `DocumentElement`
+  - [ ] Define how OCR tables map to `DocumentElement(TABLE)`
+  - [ ] Define metadata fields for OCR confidence, bbox, engine, preprocessing mode
+
+- [ ] Phase 14c：Add optional OCR path for `parse_image_document(...)`
+  - [ ] Keep OCR disabled by default unless explicitly requested
+  - [ ] Return `ParsedDocument` with OCR-backed pages and elements
+  - [ ] Preserve image page metadata
+
+- [ ] Phase 14d：Design scanned PDF OCR path
+  - [ ] Detect pages without reliable native text
+  - [ ] Render page image only when OCR is explicitly enabled
+  - [ ] Convert OCR results to Document-first elements
+
+- [ ] Phase 14e：Map OCR text and layout blocks to `DocumentElement`
+  - [ ] paragraph / title / header / footer / figure caption when available
+  - [ ] preserve bbox and OCR confidence
+
+- [ ] Phase 14f：Map OCR table results to `DocumentElement(TABLE)`
+  - [ ] preserve table HTML where available
+  - [ ] preserve cell spans / bbox / table metadata
+  - [ ] allow downstream `table_compare` to run only when needed
+
+- [ ] Phase 14g：Connect OCR evidence to `EvidenceIndex`
+  - [ ] include OCR source metadata in Difference metadata
+  - [ ] add review context for OCR-derived evidence
+  - [ ] avoid final audit conclusions
+
+- [ ] Phase 14h：Validate with scan samples
+  - [ ] red seal over table text
+  - [ ] horizontal clean scan
+  - [ ] visibly skewed scan
+  - [ ] scanned PDF if available
+
+- [ ] Phase 14i：Update reports and demo docs after OCR integration
+  - [ ] document OCR limitations
+  - [ ] document how to enable OCR
+  - [ ] document expected evidence categories
 
 ## Test Commands
 

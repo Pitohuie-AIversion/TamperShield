@@ -140,6 +140,61 @@ overwrite
 
 报告不得生成 `tampered / not tampered`、`safe / unsafe`、`PASS / FAIL` 等最终审计结论；报告只能呈现 `EvidenceIndex` 中已有的差异、证据位置、严重程度、metadata、人工复核标记和表格精查标记。
 
+## OCR Integration Rules
+
+OCR is a supporting parser capability, not a separate table-first product flow.
+
+Existing OCR-related modules include:
+
+```text
+core/pre_processing.py
+core/ocr_engine.py
+```
+
+These legacy OCR capabilities may remain for compatibility, but new OCR development must integrate with the Document-first architecture.
+
+The required OCR integration path is:
+
+```text
+image / scanned PDF
+        ↓
+preprocess_pipeline(...)
+        ↓
+OCR layout / OCR text / OCR table extraction
+        ↓
+DocumentPage / DocumentElement
+        ↓
+page_aligner
+        ↓
+content_compare
+        ↓
+table_compare, only when needed
+        ↓
+EvidenceIndex
+        ↓
+report_generator
+```
+
+Rules:
+
+* OCR must not directly produce final audit conclusions.
+* OCR must not bypass `EvidenceIndex`.
+* OCR table extraction must not become the main product flow.
+* OCR text blocks should become `DocumentElement` text-like elements, such as paragraph / title / header / footer when possible.
+* OCR table results should become `DocumentElement(TABLE)` when possible.
+* OCR image / seal / figure regions should become image-like `DocumentElement` records when possible.
+* OCR confidence, bounding box, page number, source image path, preprocessing parameters, and OCR engine metadata should be preserved in evidence metadata where available.
+* OCR-backed parsing should be optional and explicit at first, not enabled silently for all documents.
+* Legacy OCR table-first functions may remain for compatibility, but new product features should enter through the Document-first parser and EvidenceIndex.
+
+### OCR Development Do Not
+
+- Do not route OCR results directly to DataFrame comparison as the main product path.
+- Do not make OCR table extraction the primary business workflow.
+- Do not use OCR output to claim final document status automatically.
+- Do not discard OCR bounding boxes or confidence scores.
+- Do not modify existing Document-first API unless explicitly planned.
+
 ## 强制技术栈架构
 
 任何新增代码必须遵循本项目指定的库使用规范，不得擅自引入功能重叠的第三方包。

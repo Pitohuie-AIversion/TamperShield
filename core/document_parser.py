@@ -254,6 +254,8 @@ def _convert_docx_to_pdf_with_libreoffice(
                 command,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
             )
         except FileNotFoundError as exc:

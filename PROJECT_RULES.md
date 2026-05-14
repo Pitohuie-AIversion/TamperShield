@@ -249,6 +249,59 @@ page_reordered=0
 
 The observed Chinese-path mojibake in earlier report viewing was a display/command-wrapper issue, not a confirmed internal Unicode bug.
 
+## CLI / Demo Runner Rules
+
+A future CLI or demo runner may be added under `tools/`, for example:
+
+```text
+tools/run_document_demo.py
+```
+
+The CLI must be a thin wrapper around:
+
+```text
+main.py::run_document_first_pipeline(...)
+```
+
+The CLI must not directly orchestrate:
+
+```text
+document_parser
+page_aligner
+content_compare
+table_compare
+report_generator internals
+```
+
+The CLI must preserve the same safety model:
+
+```text
+default = read-only
+report writing requires explicit --allow-write
+report_output_path must be explicit
+overwrite defaults to false
+```
+
+The CLI must not output final audit judgments:
+
+```text
+tampered / not tampered
+safe / unsafe
+PASS / FAIL
+篡改 / 未篡改
+安全 / 不安全
+```
+
+The CLI may print:
+
+```text
+EvidenceIndex.summary()
+EvidenceIndex.metadata
+report path when explicitly written
+```
+
+The CLI should prefer `Path.glob()` or explicit path arguments to avoid Windows Chinese-path command-line display issues.
+
 ## 表格子能力规则
 
 文档级对齐与比对必须先形成可追溯的页面、区域和元素结构，再根据元素类型进入段落、图片、签章、空白页或表格比对。

@@ -97,7 +97,18 @@ LLMs must not participate in final audit data generation or audit judgment.
 
 ## Current Development Focus
 
-The real-document validation and targeted fixes through Phase 11p have been completed.
+The Document-first pipeline, real-document validation, targeted fixes, and demo documentation are complete through Phase 12d.
+
+Current project entry documents:
+
+```text
+README.md
+DEMO_WORKFLOW.md
+DEMO_CHECKLIST.md
+PROJECT_RULES.md
+AGENTS.md
+TODO.md
+```
 
 Current stable validation baseline:
 
@@ -109,23 +120,24 @@ page_reordered = 0
 requires_table_compare_count = 0
 ```
 
-Important validation conclusions:
+The current focus is Phase 13:
 
-* DOCX parsing should use LibreOffice rendered PDF pagination when available.
-* Forward baseline skips are not treated as reordered pages.
-* `page_added/page_deleted` evidence includes `page_issue_category` and `suggested_review_severity` metadata.
-* Markdown reports display Review context and Page profile.
-* The generated Markdown report is UTF-8; Chinese path mojibake observed earlier was caused by PowerShell/conda stdout display, not internal project encoding.
-* Use `Path.glob()` in command-line demos to avoid passing long Chinese paths directly through `python -c`.
-* Use `Get-Content -Encoding UTF8` when viewing Markdown reports in PowerShell.
-* Do not prepend LibreOffice to PATH before running `conda run ... python`, because it may shadow Python with LibreOffice's python-core.
+```text
+CLI wrapper / demo runner design
+```
 
-Rules for Phase 12:
+Rules for Phase 13:
 
-- Do not rebuild the core architecture.
-- Do not re-investigate the 44/45 page_count issue unless new evidence appears.
-- Do not fix Chinese metadata encoding in code unless a code-level Unicode bug is reproduced.
-- Focus on stable demo commands, documentation, known limitations, and next improvement backlog.
+* Design before implementation.
+* Do not rebuild the core architecture.
+* The CLI wrapper should call `main.py::run_document_first_pipeline(...)`.
+* The CLI wrapper must default to read-only execution.
+* Report writing must require explicit `--allow-write`.
+* Report output path must be explicit.
+* Overwrite must be false by default.
+* Do not output final audit judgments such as tampered / not tampered / safe / unsafe / PASS / FAIL.
+* Do not use LLMs in the CLI.
+* Do not bypass `EvidenceIndex`.
 
 Do not recreate already completed modules unless explicitly asked.
 

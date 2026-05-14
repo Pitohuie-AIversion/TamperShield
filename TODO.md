@@ -116,42 +116,69 @@
 - [x] Phase 11p：确认 metadata 中文路径不是项目内部乱码
 - [x] 确认 report 文件实际为 UTF-8 正常内容
 - [x] 确认乱码主要来自 PowerShell 默认显示 / conda run stdout 包装层显示编码
+- [x] Phase 12a：新增 `DEMO_WORKFLOW.md`
+- [x] `DEMO_WORKFLOW.md` 已记录 Document-first demo 的只读运行命令
+- [x] `DEMO_WORKFLOW.md` 已记录显式 Markdown 报告导出命令模板
+- [x] `DEMO_WORKFLOW.md` 已记录 `Get-Content -Encoding UTF8` 报告查看方式
+- [x] `DEMO_WORKFLOW.md` 已记录 known limitations 和 next improvement backlog
+- [x] Phase 12b：增强 `DEMO_WORKFLOW.md` 的可交付质量
+- [x] 新增 Quick Start / Expected Read-Only Output / Report Export Safety Notes / Evidence Interpretation Notes / Troubleshooting
+- [x] Phase 12c：新增 `DEMO_CHECKLIST.md`
+- [x] `DEMO_CHECKLIST.md` 已覆盖环境、输入、只读运行、报告导出、报告审阅、证据解释、安全边界、已知限制和 demo pass criteria
+- [x] Phase 12d：新增 `README.md`
+- [x] `README.md` 已作为项目根目录入口说明
+- [x] `README.md` 已链接 Demo Workflow、Demo Checklist、Project Rules、Agent Instructions 和 TODO
 
 ## Current Focus
 
-当前阶段已经完成真实文件验证中的主要 targeted fixes：
+当前阶段已经完成 Document-first 真实验证、targeted fixes，以及 demo / 交付文档入口整理。
 
-- DOCX 通过 LibreOffice rendered PDF 获得稳定分页
-- `page_aligner` 已避免 forward skip 被误判为 reordered
-- `page_added/page_deleted` 已有页面性质分类 metadata
-- Markdown 报告已展示 review context 和 page profile
-- 真实 Markdown 报告已完成一次受控写出验证
-- 当前 page_count 稳定为 baseline 44 页
-- 中文路径乱码已确认为显示/命令包装层问题，而非项目内部编码错误
+当前可交付文档入口：
+
+```text
+README.md
+DEMO_WORKFLOW.md
+DEMO_CHECKLIST.md
+PROJECT_RULES.md
+AGENTS.md
+TODO.md
+```
+
+当前稳定验证基线：
+
+```text
+candidate_page_count = 39
+baseline_page_count = 44
+difference_count = 69
+page_reordered = 0
+requires_table_compare_count = 0
+```
 
 当前下一步应进入：
 
 ```text
-Phase 12：整理真实验证结论与准备可交付 demo 流程
+Phase 13：CLI wrapper / demo runner 设计准备
 ```
 
-Phase 12 的目标不是继续大规模改代码，而是整理稳定运行命令、报告查看方式、已知限制和下一轮改进清单。
+Phase 13 的目标是为 demo 命令提供更友好的命令行入口，但必须保持 Document-first pipeline、EvidenceIndex 和显式写入权限控制不变。
 
 ## Next
 
-### Phase 12：整理真实验证结论与 Demo 流程
+### Phase 13：CLI wrapper / demo runner 设计准备
 
-- [ ] 整理推荐运行命令，优先使用 `Path.glob()` 避免中文路径命令行显示问题
-- [ ] 整理推荐报告查看命令：`Get-Content -Encoding UTF8`
-- [ ] 记录当前稳定 summary：candidate=39, baseline=44, difference_count=69
-- [ ] 记录当前 page_added/page_deleted 分类解释
-- [ ] 记录当前 known limitations：
-  - rendered PDF 路径下 DOCX native table 结构不会保留为 table element
-  - `requires_table_compare_count=0` 不代表原文档没有表格
-  - 中文路径在某些 PowerShell / conda run stdout 场景下可能显示乱码
-  - LibreOffice profile / fonts / input file version 会影响分页
-- [ ] 准备一套只读 demo 命令
-- [ ] 准备一套显式写报告 demo 命令，必须使用 `allow_write=True` 和明确输出路径
+- [ ] 设计一个轻量 CLI wrapper，例如 `tools/run_document_demo.py`
+- [ ] CLI 默认只读运行，不写文件
+- [ ] CLI 输入参数应支持 `--candidate` 和 `--baseline`
+- [ ] CLI 可选支持 `--auto-discover` 使用 `Path.glob()` 查找 `data/base_docs/*.pdf` 和 `data/base_docs/*.docx`
+- [ ] CLI 可选支持 `--report-output`
+- [ ] CLI 只有在显式 `--allow-write` 时才允许写报告
+- [ ] CLI 默认 `overwrite=False`
+- [ ] CLI 不得输出 tampered / not tampered / safe / unsafe / PASS / FAIL 结论
+- [ ] CLI 只调用 `main.py::run_document_first_pipeline(...)`
+- [ ] CLI 不得直接调用 parser / aligner / content_compare / table_compare
+- [ ] CLI 不得引入 LLM
+- [ ] CLI 不得改变现有 Python core API
+- [ ] 先设计，不急于实现
 
 ## Test Commands
 

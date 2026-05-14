@@ -1,0 +1,6 @@
+paddleocr[all]
+paddlex
+requests
+pillow
+opencv-python
+numpy

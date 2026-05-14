@@ -526,28 +526,6 @@ def _parse_image_document_with_ocr(
             "preprocess": dict(preprocess_metadata),
         },
     )
-    page.add_element(
-        DocumentElement(
-            element_id="image-page-1-image-0",
-            element_type="image",
-            page_number=1,
-            metadata={
-                "source_file": str(path),
-                "source_format": "image",
-                "page_index": 0,
-            },
-        )
-    )
-
-    return ParsedDocument(
-        file_path=str(path),
-        file_type="image",
-        pages=[page],
-        metadata={
-            "source_file": str(path),
-            "source_format": "image",
-        },
-    )
 
 
 def _ocr_get(obj: Any, key: str, default: Any = None) -> Any:

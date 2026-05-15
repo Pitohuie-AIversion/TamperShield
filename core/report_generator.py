@@ -8,6 +8,7 @@ preprocess images, or make audit judgments.
 """
 
 import json
+import html
 from pathlib import Path
 from typing import Any
 
@@ -150,6 +151,91 @@ def write_text_report(
     return path
 
 
+def generate_html_report(
+    index: EvidenceIndex,
+    annotations: Any = None,
+    rendered_annotations: Any = None,
+    title: str = "TamperShield Evidence Report",
+) -> str:
+    """Generate a lightweight standalone HTML evidence report."""
+    summary_bundle = evidence_index_to_summary_dict(index)
+    summary = summary_bundle["summary"]
+    metadata = summary_bundle["metadata"]
+    annotation_items = _annotation_dicts(annotations)
+    if annotations is None:
+        annotation_items = [
+            make_json_safe(annotation.to_dict())
+            for annotation in build_evidence_annotations(index)
+        ]
+    rendered_items = _rendered_annotation_dicts(rendered_annotations)
+
+    lines: list[str] = [
+        "<!doctype html>",
+        '<html lang="en">',
+        "<head>",
+        '<meta charset="utf-8" />',
+        '<meta name="viewport" content="width=device-width, initial-scale=1" />',
+        f"<title>{_escape(title)}</title>",
+        "<style>",
+        _html_report_css(),
+        "</style>",
+        "</head>",
+        "<body>",
+        "<main>",
+        f"<h1>{_escape(title)}</h1>",
+        '<section class="summary-grid">',
+        _summary_card("Total differences", summary.get("total", 0)),
+        _summary_card("Requires manual review", summary.get("requires_manual_review_count", 0)),
+        _summary_card("Requires table compare", summary.get("requires_table_compare_count", 0)),
+        "</section>",
+        "<section>",
+        "<h2>Summary</h2>",
+        '<div class="stats">',
+        _json_block("Severity", summary.get("by_severity", {})),
+        _json_block("Diff type", summary.get("by_diff_type", {})),
+        _json_block("Category", summary.get("by_category", {})),
+        "</div>",
+        "</section>",
+        "<section>",
+        "<h2>Metadata</h2>",
+        _json_pre(metadata),
+        "</section>",
+        "<section>",
+        "<h2>Evidence Records</h2>",
+        _evidence_records_table(index),
+        "</section>",
+        "<section>",
+        "<h2>Evidence Annotations</h2>",
+        _annotations_table(annotation_items),
+        "</section>",
+        "<section>",
+        "<h2>Rendered Annotation Images</h2>",
+        _rendered_annotations_gallery(rendered_items),
+        "</section>",
+        "</main>",
+        "</body>",
+        "</html>",
+    ]
+    return "\n".join(lines)
+
+
+def write_html_report(
+    html_text: str,
+    output_path: str | Path,
+    allow_write: bool = False,
+    overwrite: bool = False,
+    encoding: str = "utf-8",
+) -> Path:
+    """Write HTML report text only when explicitly permitted."""
+    return write_text_report(
+        html_text,
+        output_path=output_path,
+        allow_write=allow_write,
+        overwrite=overwrite,
+        encoding=encoding,
+    )
+
+
 def generate_report_bundle(index: EvidenceIndex) -> dict[str, Any]:
     """Return an in-memory bundle containing summary, pages, and Markdown."""
     annotations = build_evidence_annotations(index)
@@ -160,7 +246,248 @@ def generate_report_bundle(index: EvidenceIndex) -> dict[str, Any]:
             [annotation.to_dict() for annotation in annotations]
         ),
         "markdown": generate_markdown_report(index),
+        "html": generate_html_report(index, annotations=annotations),
     }
+
+
+def _html_report_css() -> str:
+    return """
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #1f2933;
+  background: #f5f7fa;
+}
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+h1, h2, h3 {
+  color: #111827;
+}
+section {
+  margin: 20px 0;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid #d8dee9;
+  border-radius: 8px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+th, td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 8px;
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: #f3f4f6;
+}
+pre {
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  background: #111827;
+  color: #f9fafb;
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.summary-card {
+  padding: 14px;
+  border: 1px solid #d8dee9;
+  border-radius: 8px;
+  background: #ffffff;
+}
+.summary-card strong {
+  display: block;
+  font-size: 24px;
+  margin-top: 8px;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+.image-card {
+  border: 1px solid #d8dee9;
+  border-radius: 8px;
+  padding: 12px;
+}
+.image-card img {
+  max-width: 100%;
+  border: 1px solid #e5e7eb;
+}
+.muted {
+  color: #6b7280;
+}
+"""
+
+
+def _summary_card(label: str, value: Any) -> str:
+    return (
+        '<div class="summary-card">'
+        f"<span>{_escape(label)}</span>"
+        f"<strong>{_escape(value)}</strong>"
+        "</div>"
+    )
+
+
+def _json_block(label: str, value: Any) -> str:
+    return (
+        "<div>"
+        f"<h3>{_escape(label)}</h3>"
+        f"{_json_pre(value)}"
+        "</div>"
+    )
+
+
+def _json_pre(value: Any) -> str:
+    json_text = json.dumps(make_json_safe(value), ensure_ascii=False, indent=2, sort_keys=True)
+    return f"<pre>{_escape(json_text)}</pre>"
+
+
+def _evidence_records_table(index: EvidenceIndex) -> str:
+    if not index.records:
+        return '<p class="muted">No evidence records.</p>'
+
+    rows = [
+        "<table>",
+        "<thead>",
+        "<tr>",
+        "<th>Evidence ID</th><th>Diff type</th><th>Category</th><th>Severity</th>"
+        "<th>Candidate page</th><th>Baseline page</th><th>Message</th><th>Metadata</th>",
+        "</tr>",
+        "</thead>",
+        "<tbody>",
+    ]
+    for record in index.records:
+        record_dict = evidence_record_to_dict(record)
+        rows.extend(
+            [
+                "<tr>",
+                f"<td>{_escape(record_dict['evidence_id'])}</td>",
+                f"<td>{_escape(record_dict['diff_type'])}</td>",
+                f"<td>{_escape(record_dict['category'])}</td>",
+                f"<td>{_escape(record_dict['severity'])}</td>",
+                f"<td>{_escape(record_dict['candidate_page'])}</td>",
+                f"<td>{_escape(record_dict['baseline_page'])}</td>",
+                f"<td>{_escape(record_dict['message'])}</td>",
+                f"<td>{_json_pre(record_dict['metadata'])}</td>",
+                "</tr>",
+            ]
+        )
+    rows.extend(["</tbody>", "</table>"])
+    return "\n".join(rows)
+
+
+def _annotations_table(annotations: list[dict[str, Any]]) -> str:
+    if not annotations:
+        return '<p class="muted">No evidence annotations.</p>'
+
+    rows = [
+        "<table>",
+        "<thead>",
+        "<tr>",
+        "<th>Evidence ID</th><th>Label</th><th>Type</th><th>Severity</th>"
+        "<th>Candidate page</th><th>Baseline page</th><th>Review status</th><th>Metadata</th>",
+        "</tr>",
+        "</thead>",
+        "<tbody>",
+    ]
+    for annotation in annotations:
+        rows.extend(
+            [
+                "<tr>",
+                f"<td>{_escape(annotation.get('evidence_id'))}</td>",
+                f"<td>{_escape(annotation.get('annotation_label'))}</td>",
+                f"<td>{_escape(annotation.get('annotation_type'))}</td>",
+                f"<td>{_escape(annotation.get('severity'))}</td>",
+                f"<td>{_escape(annotation.get('candidate_page_number'))}</td>",
+                f"<td>{_escape(annotation.get('baseline_page_number'))}</td>",
+                f"<td>{_escape(annotation.get('review_status'))}</td>",
+                f"<td>{_json_pre(annotation.get('metadata', {}))}</td>",
+                "</tr>",
+            ]
+        )
+    rows.extend(["</tbody>", "</table>"])
+    return "\n".join(rows)
+
+
+def _rendered_annotations_gallery(rendered_annotations: list[dict[str, Any]]) -> str:
+    if not rendered_annotations:
+        return '<p class="muted">No rendered annotation images.</p>'
+
+    cards: list[str] = ['<div class="image-grid">']
+    for item in rendered_annotations:
+        output_image_path = item.get("output_image_path")
+        cards.extend(
+            [
+                '<div class="image-card">',
+                f"<h3>{_escape(item.get('evidence_id'))}</h3>",
+                f"<p>{_escape(item.get('annotation_label'))} "
+                f"({_escape(item.get('source_side'))}, page={_escape(item.get('page_number'))}, "
+                f"status={_escape(item.get('render_status'))})</p>",
+            ]
+        )
+        if output_image_path:
+            cards.append(
+                f'<img src="{_escape_attr(output_image_path)}" '
+                f'alt="{_escape_attr(item.get("evidence_id"))}" />'
+            )
+            cards.append(f"<p class=\"muted\">{_escape(output_image_path)}</p>")
+        else:
+            cards.append('<p class="muted">No image path available.</p>')
+        cards.append(_json_pre(item.get("metadata", {})))
+        cards.append("</div>")
+
+    cards.append("</div>")
+    return "\n".join(cards)
+
+
+def _annotation_dicts(annotations: Any) -> list[dict[str, Any]]:
+    if annotations is None:
+        return []
+
+    items: list[dict[str, Any]] = []
+    for annotation in annotations:
+        if hasattr(annotation, "to_dict"):
+            items.append(make_json_safe(annotation.to_dict()))
+        elif isinstance(annotation, dict):
+            items.append(make_json_safe(annotation))
+        else:
+            items.append({"value": make_json_safe(annotation)})
+    return items
+
+
+def _rendered_annotation_dicts(rendered_annotations: Any) -> list[dict[str, Any]]:
+    return _annotation_dicts(rendered_annotations)
+
+
+def _escape(value: Any) -> str:
+    if value is None:
+        return ""
+    return html.escape(str(value), quote=True)
+
+
+def _escape_attr(value: Any) -> str:
+    return _escape(value)
 
 
 def _append_record_markdown(lines: list[str], record: EvidenceRecord) -> None:

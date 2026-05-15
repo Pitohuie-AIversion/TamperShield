@@ -7,6 +7,8 @@ cell comparison, evidence indexing, or report generation.
 """
 
 from pathlib import Path
+import contextlib
+import io
 import subprocess
 import tempfile
 from typing import Any
@@ -124,6 +126,28 @@ def parse_pdf_document(file_path: str | Path) -> ParsedDocument:
                 )
                 text_block_count += 1
 
+            for image_index, image_element in enumerate(
+                _extract_pdf_image_elements(
+                    pdf_page=pdf_page,
+                    path=path,
+                    page_number=page_number,
+                    page_index=page_index,
+                )
+            ):
+                image_element.element_id = f"pdf-page-{page_number}-image-{image_index}"
+                document_page.add_element(image_element)
+
+            for table_index, table_element in enumerate(
+                _extract_pdf_table_elements(
+                    pdf_page=pdf_page,
+                    path=path,
+                    page_number=page_number,
+                    page_index=page_index,
+                )
+            ):
+                table_element.element_id = f"pdf-page-{page_number}-table-{table_index}"
+                document_page.add_element(table_element)
+
             if text_block_count == 0:
                 document_page.add_element(
                     DocumentElement(
@@ -204,27 +228,31 @@ def _parse_docx_native_single_page(file_path: str | Path) -> ParsedDocument:
         )
     # Phase 3 minimal implementation: paragraphs and tables are extracted in
     # separate passes. Original body-order traversal can be added later.
-    table_index = 0
-    for table in doc.tables:
-        rows = _docx_table_to_rows(table)
-        table_text = _flatten_table_text(rows)
-
+    for table_index, table in enumerate(doc.tables):
         page.add_element(
-            DocumentElement(
-                element_id=f"docx-table-{table_index}",
-                element_type="table",
+            _docx_table_to_element(
+                table=table,
+                path=path,
+                table_index=table_index,
                 page_number=1,
-                text=table_text,
-                raw=rows,
-                metadata={
-                    "source_file": str(path),
-                    "source_format": "docx",
-                    "pagination": "not_available_native_docx",
-                    "table_index": table_index,
-                },
+                page_index=0,
+                pagination="not_available_native_docx",
+                page_index_estimated=False,
             )
         )
-        table_index += 1
+
+    for image_index, image_element in enumerate(
+        _extract_docx_image_elements(
+            doc=doc,
+            path=path,
+            page_number=1,
+            page_index=0,
+            pagination="not_available_native_docx",
+            page_index_estimated=False,
+        )
+    ):
+        image_element.element_id = f"docx-image-{image_index}"
+        page.add_element(image_element)
 
     page.plain_text = "\n".join(
         element.text for element in page.elements if element.text.strip()
@@ -308,10 +336,24 @@ def _parse_docx_via_rendered_pdf(file_path: str | Path) -> ParsedDocument:
             "render_backend": "libreoffice",
             "rendered_pdf_page_count": len(rendered_pdf_doc.pages),
         }
+        native_elements = _extract_docx_native_supplement_elements(
+            original_path,
+            pagination="rendered_pdf",
+        )
+        if native_elements and rendered_pdf_doc.pages:
+            rendered_pdf_doc.pages[0].elements.extend(native_elements)
+
         for page in rendered_pdf_doc.pages:
             page.metadata.update(metadata)
             for element in page.elements:
                 element.metadata.update(metadata)
+
+        metadata["native_docx_table_count"] = sum(
+            1 for element in native_elements if element.element_type == "table"
+        )
+        metadata["native_docx_image_count"] = sum(
+            1 for element in native_elements if element.element_type == "image"
+        )
 
         return ParsedDocument(
             file_path=str(original_path),
@@ -676,6 +718,334 @@ def _bbox_from_value(value: Any, page_number: int) -> BoundingBox | None:
         )
 
     return None
+
+
+def _extract_pdf_image_elements(
+    pdf_page: Any,
+    path: Path,
+    page_number: int,
+    page_index: int,
+) -> list[DocumentElement]:
+    elements: list[DocumentElement] = []
+    page_dict = pdf_page.get_text("dict") or {}
+    blocks = page_dict.get("blocks", [])
+
+    for image_index, block in enumerate(blocks):
+        if block.get("type") != 1:
+            continue
+
+        bbox = _bbox_from_value(block.get("bbox"), page_number=page_number)
+        elements.append(
+            DocumentElement(
+                element_id=f"pdf-page-{page_number}-image-{image_index}",
+                element_type="image",
+                page_number=page_number,
+                bbox=bbox,
+                raw=None,
+                metadata={
+                    "source_file": str(path),
+                    "source_format": "pdf",
+                    "page_index": page_index,
+                    "image_index": image_index,
+                    "width": block.get("width"),
+                    "height": block.get("height"),
+                    "extension": block.get("ext"),
+                    "xref": block.get("xref"),
+                    "detection_method": "pymupdf",
+                },
+            )
+        )
+
+    return elements
+
+
+def _extract_pdf_table_elements(
+    pdf_page: Any,
+    path: Path,
+    page_number: int,
+    page_index: int,
+) -> list[DocumentElement]:
+    elements = _extract_pdf_tables_with_pymupdf(
+        pdf_page=pdf_page,
+        path=path,
+        page_number=page_number,
+        page_index=page_index,
+    )
+    if elements:
+        return elements
+
+    return _extract_pdf_table_like_blocks(
+        pdf_page=pdf_page,
+        path=path,
+        page_number=page_number,
+        page_index=page_index,
+    )
+
+
+def _extract_pdf_tables_with_pymupdf(
+    pdf_page: Any,
+    path: Path,
+    page_number: int,
+    page_index: int,
+) -> list[DocumentElement]:
+    if not hasattr(pdf_page, "find_tables"):
+        return []
+
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            table_finder = pdf_page.find_tables()
+    except Exception:
+        return []
+
+    tables = getattr(table_finder, "tables", None) or []
+    elements: list[DocumentElement] = []
+    for table_index, table in enumerate(tables):
+        rows = _extract_pymupdf_table_rows(table)
+        text = _flatten_table_text(rows)
+        metadata = _table_metadata(
+            rows=rows,
+            detection_method="pymupdf",
+            page_index_estimated=False,
+        )
+        metadata.update(
+            {
+                "source_file": str(path),
+                "source_format": "pdf",
+                "page_index": page_index,
+                "table_index": table_index,
+            }
+        )
+        elements.append(
+            DocumentElement(
+                element_id=f"pdf-page-{page_number}-table-{table_index}",
+                element_type="table",
+                page_number=page_number,
+                text=text,
+                bbox=_bbox_from_value(getattr(table, "bbox", None), page_number=page_number),
+                raw=rows,
+                metadata=metadata,
+            )
+        )
+
+    return elements
+
+
+def _extract_pymupdf_table_rows(table: Any) -> list[list[str]]:
+    try:
+        rows = table.extract()
+    except Exception:
+        rows = []
+
+    return _normalize_table_rows(rows)
+
+
+def _extract_pdf_table_like_blocks(
+    pdf_page: Any,
+    path: Path,
+    page_number: int,
+    page_index: int,
+) -> list[DocumentElement]:
+    elements: list[DocumentElement] = []
+    blocks = pdf_page.get_text("blocks") or []
+
+    for block_index, block in enumerate(blocks):
+        text = _pdf_block_text(block)
+        if not _looks_like_table_text_block(text):
+            continue
+
+        rows = _rows_from_text_block(text)
+        metadata = _table_metadata(
+            rows=rows,
+            detection_method="heuristic",
+            page_index_estimated=False,
+        )
+        metadata.update(
+            {
+                "source_file": str(path),
+                "source_format": "pdf",
+                "page_index": page_index,
+                "block_index": block_index,
+                "table_index": len(elements),
+            }
+        )
+        elements.append(
+            DocumentElement(
+                element_id=f"pdf-page-{page_number}-table-heuristic-{block_index}",
+                element_type="table",
+                page_number=page_number,
+                text=_flatten_table_text(rows),
+                bbox=_bbox_from_value(block[:4], page_number=page_number),
+                raw=rows,
+                metadata=metadata,
+            )
+        )
+
+    return elements
+
+
+def _looks_like_table_text_block(text: str) -> bool:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return False
+
+    multi_cell_lines = 0
+    for line in lines:
+        if "\t" in line:
+            multi_cell_lines += 1
+            continue
+
+        parts = [part for part in line.split("  ") if part.strip()]
+        if len(parts) >= 3:
+            multi_cell_lines += 1
+
+    return multi_cell_lines >= 2
+
+
+def _rows_from_text_block(text: str) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "\t" in line:
+            rows.append([cell.strip() for cell in line.split("\t")])
+            continue
+        rows.append([cell.strip() for cell in re_split_table_columns(line)])
+    return rows
+
+
+def re_split_table_columns(line: str) -> list[str]:
+    import re
+
+    parts = [part for part in re.split(r"\s{2,}", line) if part.strip()]
+    if len(parts) > 1:
+        return parts
+    return [line]
+
+
+def _extract_docx_native_supplement_elements(
+    path: Path,
+    pagination: str,
+) -> list[DocumentElement]:
+    doc = Document(str(path))
+    elements: list[DocumentElement] = []
+
+    for table_index, table in enumerate(doc.tables):
+        elements.append(
+            _docx_table_to_element(
+                table=table,
+                path=path,
+                table_index=table_index,
+                page_number=1,
+                page_index=0,
+                pagination=pagination,
+                page_index_estimated=True,
+            )
+        )
+
+    elements.extend(
+        _extract_docx_image_elements(
+            doc=doc,
+            path=path,
+            page_number=1,
+            page_index=0,
+            pagination=pagination,
+            page_index_estimated=True,
+        )
+    )
+    return elements
+
+
+def _docx_table_to_element(
+    table: Any,
+    path: Path,
+    table_index: int,
+    page_number: int,
+    page_index: int,
+    pagination: str,
+    page_index_estimated: bool,
+) -> DocumentElement:
+    rows = _docx_table_to_rows(table)
+    metadata = _table_metadata(
+        rows=rows,
+        detection_method="native_docx",
+        page_index_estimated=page_index_estimated,
+    )
+    metadata.update(
+        {
+            "source_file": str(path),
+            "source_format": "docx",
+            "pagination": pagination,
+            "page_index": page_index,
+            "table_index": table_index,
+        }
+    )
+    return DocumentElement(
+        element_id=f"docx-table-{table_index}",
+        element_type="table",
+        page_number=page_number,
+        text=_flatten_table_text(rows),
+        raw=rows,
+        metadata=metadata,
+    )
+
+
+def _extract_docx_image_elements(
+    doc: Any,
+    path: Path,
+    page_number: int,
+    page_index: int,
+    pagination: str,
+    page_index_estimated: bool,
+) -> list[DocumentElement]:
+    elements: list[DocumentElement] = []
+    for image_index, shape in enumerate(getattr(doc, "inline_shapes", [])):
+        elements.append(
+            DocumentElement(
+                element_id=f"docx-image-{image_index}",
+                element_type="image",
+                page_number=page_number,
+                metadata={
+                    "source_file": str(path),
+                    "source_format": "docx",
+                    "pagination": pagination,
+                    "page_index": page_index,
+                    "page_index_estimated": page_index_estimated,
+                    "image_index": image_index,
+                    "width": getattr(shape, "width", None),
+                    "height": getattr(shape, "height", None),
+                    "extension": None,
+                    "detection_method": "native_docx",
+                },
+            )
+        )
+    return elements
+
+
+def _table_metadata(
+    rows: list[list[str]],
+    detection_method: str,
+    page_index_estimated: bool,
+) -> dict[str, Any]:
+    normalized_rows = _normalize_table_rows(rows)
+    row_count = len(normalized_rows)
+    col_count = max((len(row) for row in normalized_rows), default=0)
+    return {
+        "rows": row_count,
+        "cols": col_count,
+        "cells": normalized_rows,
+        "detection_method": detection_method,
+        "page_index_estimated": page_index_estimated,
+    }
+
+
+def _normalize_table_rows(rows: Any) -> list[list[str]]:
+    normalized: list[list[str]] = []
+    for row in rows or []:
+        if row is None:
+            continue
+        normalized.append(["" if cell is None else str(cell).strip() for cell in row])
+    return normalized
 
 
 def _flatten_ocr_table_text(table_item: dict[str, Any]) -> str:

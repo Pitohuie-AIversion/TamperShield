@@ -55,7 +55,11 @@ def parse_document(
     file_type = detect_file_type(path)
 
     if file_type == "pdf":
-        return parse_pdf_document(path)
+        return parse_pdf_document(
+            path,
+            enable_ocr=enable_ocr,
+            enable_preprocess=enable_preprocess,
+        )
     if file_type == "docx":
         return parse_docx_document(path)
     if file_type == "image":
@@ -75,95 +79,145 @@ def parse_document(
     )
 
 
-def parse_pdf_document(file_path: str | Path) -> ParsedDocument:
-    """Parse PDF pages and text blocks with PyMuPDF."""
+def parse_pdf_document(
+    file_path: str | Path,
+    enable_ocr: bool = False,
+    enable_preprocess: bool = False,
+    ocr_lang: str = "ch",
+    ocr_use_gpu: bool = False,
+    render_scale: float = 2.0,
+    ocr_min_text_length: int = 20,
+) -> ParsedDocument:
+    """Parse PDF pages and optionally OCR fallback for likely scanned pages."""
     path = Path(file_path)
     pages: list[DocumentPage] = []
+    ocr_engine: Any = None
 
     with fitz.open(str(path)) as pdf:
-        for page_index, pdf_page in enumerate(pdf):
-            page_number = page_index + 1
-            plain_text = pdf_page.get_text("text") or ""
-            document_page = DocumentPage(
-                page_number=page_number,
-                plain_text=plain_text,
-                metadata={
-                    "source_file": str(path),
-                    "source_format": "pdf",
-                    "page_index": page_index,
-                },
-            )
-
-            blocks = pdf_page.get_text("blocks") or []
-            text_block_count = 0
-            for block_index, block in enumerate(blocks):
-                block_text = _pdf_block_text(block)
-                if not block_text.strip():
-                    continue
-
-                bbox = BoundingBox(
-                    page_number=page_number,
-                    x0=float(block[0]),
-                    y0=float(block[1]),
-                    x1=float(block[2]),
-                    y1=float(block[3]),
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            temporary_path = Path(temporary_dir)
+            for page_index, pdf_page in enumerate(pdf):
+                page_number = page_index + 1
+                plain_text = pdf_page.get_text("text") or ""
+                blocks = pdf_page.get_text("blocks") or []
+                native_text_block_count = _native_pdf_text_block_count(blocks)
+                native_text_length = len(_normalize_text_for_ocr_decision(plain_text))
+                ocr_fallback_reason = _pdf_ocr_fallback_reason(
+                    plain_text=plain_text,
+                    native_text_block_count=native_text_block_count,
+                    ocr_min_text_length=ocr_min_text_length,
                 )
-                document_page.add_element(
-                    DocumentElement(
-                        element_id=f"pdf-page-{page_number}-block-{block_index}",
-                        element_type="paragraph",
+                document_page = DocumentPage(
+                    page_number=page_number,
+                    plain_text=plain_text,
+                    metadata={
+                        "source_file": str(path),
+                        "source_format": "pdf",
+                        "page_index": page_index,
+                        "native_text_length": native_text_length,
+                        "native_text_block_count": native_text_block_count,
+                        "ocr_fallback_applied": False,
+                        "ocr_fallback_reason": ocr_fallback_reason,
+                        "render_scale": render_scale,
+                        "ocr_backend": "paddleocr_ppstructure" if enable_ocr else "",
+                    },
+                )
+
+                text_block_count = 0
+                for block_index, block in enumerate(blocks):
+                    block_text = _pdf_block_text(block)
+                    if not block_text.strip():
+                        continue
+
+                    bbox = BoundingBox(
                         page_number=page_number,
-                        text=block_text,
-                        bbox=bbox,
-                        raw=block,
-                        metadata={
-                            "source_file": str(path),
-                            "source_format": "pdf",
-                            "page_index": page_index,
-                            "block_index": block_index,
-                        },
+                        x0=float(block[0]),
+                        y0=float(block[1]),
+                        x1=float(block[2]),
+                        y1=float(block[3]),
                     )
-                )
-                text_block_count += 1
+                    document_page.add_element(
+                        DocumentElement(
+                            element_id=f"pdf-page-{page_number}-block-{block_index}",
+                            element_type="paragraph",
+                            page_number=page_number,
+                            text=block_text,
+                            bbox=bbox,
+                            raw=block,
+                            metadata={
+                                "source_file": str(path),
+                                "source_format": "pdf",
+                                "page_index": page_index,
+                                "block_index": block_index,
+                                "ocr_fallback_applied": False,
+                            },
+                        )
+                    )
+                    text_block_count += 1
 
-            for image_index, image_element in enumerate(
-                _extract_pdf_image_elements(
-                    pdf_page=pdf_page,
-                    path=path,
-                    page_number=page_number,
-                    page_index=page_index,
-                )
-            ):
-                image_element.element_id = f"pdf-page-{page_number}-image-{image_index}"
-                document_page.add_element(image_element)
-
-            for table_index, table_element in enumerate(
-                _extract_pdf_table_elements(
-                    pdf_page=pdf_page,
-                    path=path,
-                    page_number=page_number,
-                    page_index=page_index,
-                )
-            ):
-                table_element.element_id = f"pdf-page-{page_number}-table-{table_index}"
-                document_page.add_element(table_element)
-
-            if text_block_count == 0:
-                document_page.add_element(
-                    DocumentElement(
-                        element_id=f"pdf-page-{page_number}-text-0",
-                        element_type="paragraph" if plain_text.strip() else "unknown",
+                for image_index, image_element in enumerate(
+                    _extract_pdf_image_elements(
+                        pdf_page=pdf_page,
+                        path=path,
                         page_number=page_number,
-                        text=plain_text,
-                        metadata={
-                            "source_file": str(path),
-                            "source_format": "pdf",
-                            "page_index": page_index,
-                        },
+                        page_index=page_index,
                     )
-                )
+                ):
+                    image_element.element_id = f"pdf-page-{page_number}-image-{image_index}"
+                    document_page.add_element(image_element)
 
-            pages.append(document_page)
+                for table_index, table_element in enumerate(
+                    _extract_pdf_table_elements(
+                        pdf_page=pdf_page,
+                        path=path,
+                        page_number=page_number,
+                        page_index=page_index,
+                    )
+                ):
+                    table_element.element_id = f"pdf-page-{page_number}-table-{table_index}"
+                    document_page.add_element(table_element)
+
+                if enable_ocr and ocr_fallback_reason:
+                    if ocr_engine is None:
+                        from core.ocr_engine import build_pp_structure
+
+                        ocr_engine = build_pp_structure(
+                            lang=ocr_lang,
+                            use_gpu=ocr_use_gpu,
+                        )
+                    fallback_texts = _apply_pdf_page_ocr_fallback(
+                        pdf_page=pdf_page,
+                        document_page=document_page,
+                        path=path,
+                        page_number=page_number,
+                        page_index=page_index,
+                        temporary_dir=temporary_path,
+                        engine=ocr_engine,
+                        render_scale=render_scale,
+                        ocr_lang=ocr_lang,
+                        ocr_use_gpu=ocr_use_gpu,
+                        enable_preprocess=enable_preprocess,
+                    )
+                    if fallback_texts:
+                        document_page.plain_text = "\n".join(fallback_texts)
+
+                if text_block_count == 0 and not document_page.metadata.get("ocr_fallback_applied"):
+                    document_page.add_element(
+                        DocumentElement(
+                            element_id=f"pdf-page-{page_number}-text-0",
+                            element_type="paragraph" if plain_text.strip() else "unknown",
+                            page_number=page_number,
+                            text=plain_text,
+                            metadata={
+                                "source_file": str(path),
+                                "source_format": "pdf",
+                                "page_index": page_index,
+                                "ocr_fallback_applied": False,
+                            },
+                        )
+                    )
+
+                pages.append(document_page)
 
     return ParsedDocument(
         file_path=str(path),
@@ -172,7 +226,193 @@ def parse_pdf_document(file_path: str | Path) -> ParsedDocument:
         metadata={
             "source_file": str(path),
             "source_format": "pdf",
+            "ocr_enabled": enable_ocr,
+            "ocr_backend": "paddleocr_ppstructure" if enable_ocr else "",
+            "ocr_pdf_fallback_enabled": enable_ocr,
+            "ocr_pdf_fallback_page_count": sum(
+                1 for page in pages if page.metadata.get("ocr_fallback_applied") is True
+            ),
+            "ocr_min_text_length": ocr_min_text_length,
+            "render_scale": render_scale,
         },
+    )
+
+
+def _normalize_text_for_ocr_decision(text: str) -> str:
+    return " ".join(str(text or "").split())
+
+
+def _native_pdf_text_block_count(blocks: list[Any]) -> int:
+    return sum(1 for block in blocks if _pdf_block_text(block).strip())
+
+
+def _pdf_ocr_fallback_reason(
+    plain_text: str,
+    native_text_block_count: int,
+    ocr_min_text_length: int,
+) -> str:
+    normalized_text = _normalize_text_for_ocr_decision(plain_text)
+    if not normalized_text:
+        return "empty_native_text"
+    if len(normalized_text) < ocr_min_text_length:
+        return "native_text_below_min_length"
+    if native_text_block_count == 0:
+        return "no_native_text_blocks"
+    return ""
+
+
+def _apply_pdf_page_ocr_fallback(
+    pdf_page: Any,
+    document_page: DocumentPage,
+    path: Path,
+    page_number: int,
+    page_index: int,
+    temporary_dir: Path,
+    engine: Any,
+    render_scale: float,
+    ocr_lang: str,
+    ocr_use_gpu: bool,
+    enable_preprocess: bool,
+) -> list[str]:
+    """Render one PDF page to a temporary image and add OCR elements."""
+    from core.ocr_engine import extract_tables_with_metadata, parse_layout_to_blocks
+
+    temporary_image_path = _render_pdf_page_to_temporary_image(
+        pdf_page=pdf_page,
+        page_number=page_number,
+        temporary_dir=temporary_dir,
+        render_scale=render_scale,
+    )
+    blocks = parse_layout_to_blocks(engine, str(temporary_image_path))
+
+    fallback_metadata = {
+        "source_file": str(path),
+        "source_format": "pdf",
+        "page_index": page_index,
+        "ocr_enabled": True,
+        "ocr_fallback_applied": True,
+        "ocr_fallback_reason": document_page.metadata.get("ocr_fallback_reason", ""),
+        "ocr_backend": "paddleocr_ppstructure",
+        "ocr_lang": ocr_lang,
+        "ocr_use_gpu": ocr_use_gpu,
+        "render_scale": render_scale,
+        "temporary_ocr_image": True,
+        "ocr_bbox_coordinate_system": "pdf_points",
+        "bbox_scaled_to_pdf_points": True,
+        "preprocess_enabled": enable_preprocess,
+        "preprocess_applied": False,
+        "preprocess_note": (
+            "Phase 21 records preprocessing intent only; "
+            "PDF OCR fallback used the rendered page image directly."
+        ),
+    }
+    document_page.metadata.update(fallback_metadata)
+
+    block_texts: list[str] = []
+    for block_index, block in enumerate(blocks):
+        block_text = _ocr_block_text(block)
+        if block_text.strip():
+            block_texts.append(block_text.strip())
+
+        block_type = _ocr_block_type(block)
+        rendered_bbox = _ocr_block_bbox(block, page_number=page_number)
+        bbox = _scale_bbox_to_pdf_points(rendered_bbox, render_scale)
+        document_page.add_element(
+            DocumentElement(
+                element_id=f"pdf-ocr-page-{page_number}-block-{block_index}",
+                element_type=_ocr_block_to_element_type(block_type),
+                page_number=page_number,
+                text=block_text,
+                bbox=bbox,
+                raw=block,
+                metadata={
+                    **fallback_metadata,
+                    "ocr_block_index": block_index,
+                    "ocr_block_type": block_type,
+                    "ocr_confidence": _ocr_block_confidence(block),
+                    "bbox_source": _ocr_block_bbox_source(block),
+                },
+            )
+        )
+
+    tables = extract_tables_with_metadata(blocks)
+    for table_index, table_item in enumerate(tables):
+        table_text = _flatten_ocr_table_text(table_item)
+        if table_text.strip():
+            block_texts.append(table_text.strip())
+
+        rendered_bbox = _ocr_table_bbox(table_item, page_number=page_number)
+        bbox = _scale_bbox_to_pdf_points(rendered_bbox, render_scale)
+        document_page.add_element(
+            DocumentElement(
+                element_id=f"pdf-ocr-page-{page_number}-table-{table_index}",
+                element_type="table",
+                page_number=page_number,
+                text=table_text,
+                bbox=bbox,
+                raw={
+                    "df": table_item.get("df"),
+                    "html": table_item.get("html"),
+                    "spans": table_item.get("spans"),
+                },
+                metadata={
+                    **fallback_metadata,
+                    "table_index": table_index,
+                    "html": table_item.get("html"),
+                    "spans": table_item.get("spans"),
+                    "cell_box_list": table_item.get("cell_box_list"),
+                    "table_ocr_pred": table_item.get("table_ocr_pred"),
+                    "source_style": table_item.get("source_style"),
+                    "detection_method": "ocr",
+                },
+            )
+        )
+
+    if not blocks:
+        document_page.add_element(
+            DocumentElement(
+                element_id=f"pdf-ocr-page-{page_number}-unknown-0",
+                element_type="unknown",
+                page_number=page_number,
+                metadata={
+                    **fallback_metadata,
+                    "ocr_note": "No OCR blocks were returned.",
+                },
+            )
+        )
+
+    return block_texts
+
+
+def _render_pdf_page_to_temporary_image(
+    pdf_page: Any,
+    page_number: int,
+    temporary_dir: Path,
+    render_scale: float,
+) -> Path:
+    image_path = temporary_dir / f"pdf_page_{page_number}_ocr.png"
+    pixmap = pdf_page.get_pixmap(
+        matrix=fitz.Matrix(render_scale, render_scale),
+        alpha=False,
+    )
+    pixmap.save(str(image_path))
+    return image_path
+
+
+def _scale_bbox_to_pdf_points(
+    bbox: BoundingBox | None,
+    render_scale: float,
+) -> BoundingBox | None:
+    if bbox is None:
+        return None
+    if render_scale == 0:
+        return bbox
+    return BoundingBox(
+        page_number=bbox.page_number,
+        x0=bbox.x0 / render_scale,
+        y0=bbox.y0 / render_scale,
+        x1=bbox.x1 / render_scale,
+        y1=bbox.y1 / render_scale,
     )
 
 

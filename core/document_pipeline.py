@@ -103,12 +103,22 @@ def compare_documents(
     page_low_confidence_threshold: float = 0.45,
     page_search_window: int = 2,
     page_text_similarity_threshold: float = 0.98,
+    enable_ocr: bool = False,
+    enable_preprocess: bool = False,
 ) -> EvidenceIndex:
     """Parse and compare two document files through the Document-first pipeline."""
     from core.document_parser import parse_document
 
-    candidate_doc = parse_document(candidate_file)
-    baseline_doc = parse_document(baseline_file)
+    candidate_doc = parse_document(
+        candidate_file,
+        enable_ocr=enable_ocr,
+        enable_preprocess=enable_preprocess,
+    )
+    baseline_doc = parse_document(
+        baseline_file,
+        enable_ocr=enable_ocr,
+        enable_preprocess=enable_preprocess,
+    )
 
     return compare_parsed_documents(
         candidate_doc,

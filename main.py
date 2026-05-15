@@ -136,6 +136,8 @@ def run_document_first_pipeline(
     report_output_path: Optional[str] = None,
     allow_write: bool = False,
     overwrite: bool = False,
+    enable_ocr: bool = False,
+    enable_preprocess: bool = False,
 ) -> EvidenceIndex:
     """
     Run the Document-first comparison pipeline.
@@ -151,6 +153,8 @@ def run_document_first_pipeline(
         baseline_file=baseline_file,
         key_columns=key_columns,
         numeric_columns=numeric_columns,
+        enable_ocr=enable_ocr,
+        enable_preprocess=enable_preprocess,
         page_match_threshold=page_match_threshold,
         page_low_confidence_threshold=page_low_confidence_threshold,
         page_search_window=page_search_window,

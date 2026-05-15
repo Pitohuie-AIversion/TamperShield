@@ -64,6 +64,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the first N evidence summaries. Default: 0.",
     )
     parser.add_argument(
+        "--enable-ocr",
+        action="store_true",
+        help="Enable OCR-backed parsing for image inputs.",
+    )
+    parser.add_argument(
+        "--enable-preprocess",
+        action="store_true",
+        help="Pass preprocessing intent to OCR-backed image parsing.",
+    )
+    parser.add_argument(
         "--encoding",
         default="utf-8",
         help="Reserved output encoding option. Default: utf-8.",
@@ -208,6 +218,8 @@ def main(argv: list[str] | None = None) -> int:
         idx = run_document_first_pipeline(
             candidate_file=candidate,
             baseline_file=baseline,
+            enable_ocr=args.enable_ocr,
+            enable_preprocess=args.enable_preprocess,
             report_output_path=report_output,
             allow_write=args.allow_write,
             overwrite=args.overwrite,

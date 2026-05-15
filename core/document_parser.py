@@ -40,7 +40,11 @@ def detect_file_type(file_path: str | Path) -> FileType:
     return "unknown"
 
 
-def parse_document(file_path: str | Path) -> ParsedDocument:
+def parse_document(
+    file_path: str | Path,
+    enable_ocr: bool = False,
+    enable_preprocess: bool = False,
+) -> ParsedDocument:
     """Parse a file into a ParsedDocument using the minimal Phase 3 entrypoint."""
     path = Path(file_path)
     if not path.exists():
@@ -53,7 +57,11 @@ def parse_document(file_path: str | Path) -> ParsedDocument:
     if file_type == "docx":
         return parse_docx_document(path)
     if file_type == "image":
-        return parse_image_document(path)
+        return parse_image_document(
+            path,
+            enable_ocr=enable_ocr,
+            enable_preprocess=enable_preprocess,
+        )
 
     return ParsedDocument(
         file_path=str(path),
@@ -318,7 +326,7 @@ def parse_image_document(
     enable_ocr: bool = False,
     ocr_lang: str = "ch",
     ocr_use_gpu: bool = False,
-    enable_preprocess: bool = True,
+    enable_preprocess: bool = False,
     preprocess_mode: str = "gray",
     enable_deskew: bool = True,
     preserve_ocr_blocks: bool = True,
@@ -379,7 +387,7 @@ def _parse_image_document_with_ocr(
     path: Path,
     ocr_lang: str = "ch",
     ocr_use_gpu: bool = False,
-    enable_preprocess: bool = True,
+    enable_preprocess: bool = False,
     preprocess_mode: str = "gray",
     enable_deskew: bool = True,
     preserve_ocr_blocks: bool = True,

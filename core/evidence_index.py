@@ -14,15 +14,27 @@ from core.document_models import Difference
 
 
 PAGE_DIFF_TYPES = {"page_added", "page_deleted", "page_reordered"}
-PARAGRAPH_DIFF_TYPES = {"paragraph_added", "paragraph_deleted"}
+PARAGRAPH_DIFF_TYPES = {
+    "paragraph_added",
+    "paragraph_deleted",
+    "paragraph_modified",
+    "low_confidence_element_match",
+}
 TABLE_DIFF_TYPES = {
     "table_added",
     "table_deleted",
+    "table_modified",
     "table_cell_modified",
     "table_row_added",
     "table_row_deleted",
 }
-IMAGE_DIFF_TYPES = {"image_modified", "image_replaced"}
+IMAGE_DIFF_TYPES = {
+    "image_added",
+    "image_deleted",
+    "image_modified",
+    "image_replaced",
+    "image_modified_candidate",
+}
 
 
 @dataclass
@@ -131,7 +143,7 @@ def categorize_difference(diff: Difference) -> str:
         return "image"
     if diff.diff_type == "signature_modified":
         return "signature"
-    if diff.diff_type == "layout_changed":
+    if diff.diff_type in {"layout_changed", "layout_structure_changed"}:
         return "layout"
 
     return "unknown"

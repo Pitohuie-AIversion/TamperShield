@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.evidence_annotation import build_evidence_annotations
 from core.evidence_index import (
     EvidenceIndex,
     EvidenceRecord,
@@ -109,6 +110,8 @@ def generate_markdown_report(
     else:
         lines.append("- None")
 
+    _append_annotations_summary_markdown(lines, index)
+
     lines.extend(["", "## Evidence by Candidate Page", ""])
 
     if candidate_records:
@@ -149,9 +152,13 @@ def write_text_report(
 
 def generate_report_bundle(index: EvidenceIndex) -> dict[str, Any]:
     """Return an in-memory bundle containing summary, pages, and Markdown."""
+    annotations = build_evidence_annotations(index)
     return {
         "summary": evidence_index_to_summary_dict(index),
         "pages": evidence_records_to_page_dict(index),
+        "annotations": make_json_safe(
+            [annotation.to_dict() for annotation in annotations]
+        ),
         "markdown": generate_markdown_report(index),
     }
 
@@ -191,6 +198,35 @@ def _append_record_markdown(lines: list[str], record: EvidenceRecord) -> None:
             "",
         ]
     )
+
+
+def _append_annotations_summary_markdown(
+    lines: list[str],
+    index: EvidenceIndex,
+) -> None:
+    annotations = build_evidence_annotations(index)
+    lines.extend(["", "## Evidence Annotations", ""])
+
+    if not annotations:
+        lines.extend(["No evidence annotations.", ""])
+        return
+
+    for annotation in annotations[:20]:
+        bbox_status = "yes" if annotation.metadata.get("bbox_available") else "no"
+        lines.append(
+            "- "
+            f"{annotation.evidence_id}: "
+            f"{annotation.annotation_label} "
+            f"({annotation.annotation_type}, severity={annotation.severity}, "
+            f"candidate_page={annotation.candidate_page_number}, "
+            f"baseline_page={annotation.baseline_page_number}, "
+            f"bbox_available={bbox_status})"
+        )
+
+    if len(annotations) > 20:
+        lines.append(f"- ... {len(annotations) - 20} more annotations omitted.")
+
+    lines.append("")
 
 
 def _append_review_context_markdown(

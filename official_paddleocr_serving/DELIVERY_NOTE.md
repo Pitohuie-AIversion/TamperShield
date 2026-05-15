@@ -57,6 +57,36 @@ OFFICIAL_OUTPUT_ANALYSIS.md
 
 建议使用独立 conda 环境：
 
+一键部署（Windows PowerShell）：
+
+```powershell
+.\scripts\deploy_official_env.ps1
+```
+
+一键部署（Linux / macOS bash）：
+
+```bash
+bash scripts/deploy_official_env.sh
+```
+
+默认环境名：
+
+```text
+paddleocr_official
+```
+
+如需自定义环境名：
+
+```powershell
+.\scripts\deploy_official_env.ps1 -EnvName paddleocr_official
+```
+
+```bash
+ENV_NAME=paddleocr_official bash scripts/deploy_official_env.sh
+```
+
+手动部署命令如下：
+
 ```powershell
 conda create -n paddleocr_official python=3.10 -y
 conda activate paddleocr_official
